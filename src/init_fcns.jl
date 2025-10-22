@@ -53,7 +53,7 @@ end
 function Lee1997_bg_jet(U0, WC; σ=4)
     dy = y[2] - y[1]
 
-    WS = (1 - WC/Ly)/2    # width of a ``side'', i.e., the distance in the y direction over which background flow decays from U0 to zero; normalized from 0 to 1
+    WS = (1 - 2*WC/Ly)/2    # width of a ``side'', i.e., the distance in the y direction over which background flow decays from U0 to zero; normalized from 0 to 1
     if WS>0.5
         error("WC must be greater than zero")
     end
@@ -66,7 +66,7 @@ function Lee1997_bg_jet(U0, WC; σ=4)
     lower_jet_bound = ceil(Int, (1 - WS) * length(y))
 
     # North of jet
-    U[1:upper_jet_bound] .= @. U0 * exp(-((y_cent[1:upper_jet_bound] - y_cent[upper_jet_bound])^2) / σ^2) * half_Hann_window(y[1:upper_jet_bound], WS * Ly)
+    U[1:upper_jet_bound] .= @. U0 * exp(-((y_cent[1:upper_jet_bound] - y_cent[upper_jet_bound])^2) / σ^2) * half_Hann_window(y[1:upper_jet_bound+floor(Int, 2*WC/Ly)], WS * Ly)
 
     # Middle (flat jet)
     U[upper_jet_bound+1:lower_jet_bound-1] .= U0
@@ -182,12 +182,25 @@ function run_model(q1, q2, t0, params; timestepper="RK4", output_every=500)
     cnt=1
     ell=1
 
+    ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
+    u1, v1 = u_from_psi(ψ1)
+    u2, v2 = u_from_psi(ψ2)
+    
+    KE1 = [mean((u1 .- mean(u1, dims=1)).^2 .+ (v1 .- mean(v1, dims=1)).^2)]
+    KE2 = [mean((u2 .- mean(u2, dims=1)).^2 .+ (v2 .- mean(v2, dims=1)).^2)]
+
     for n = 1:nt
 
         q1, q2 = rk4(q1, q2, dt)
 
+        q1[:, 1] .= q1_bg[:, 1]
+        q1[:, end] .= q1_bg[:, end]
+        q2[:, 1] .= q2_bg[:, 1]
+        q2[:, end] .= q2_bg[:, end]
+
+
         if mod(n, output_every) == 0      # output a message
-            ψ1, ψ2 = invert_qg_pv(q1, q2)
+            ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
 
             if isnan(ψ1[2,2])
                 error("Psi is NaN")
@@ -201,7 +214,7 @@ function run_model(q1, q2, t0, params; timestepper="RK4", output_every=500)
 
                 # modified from GophysicalFlows.jl ex
                 log = @sprintf("step: %04d, t: %.1f, cfl: %.2f, KE1 avg.: %.3e, KE2 avg.: %.3e, walltime: %.2f min",
-                n, t0+n*dt, cfl, mean(u1.^2 .+ v1.^2), sum(u2.^2 .+ v2.^2), elapsed_time/60)
+                n, t0+n*dt, cfl, mean(u1.^2 .+ v1.^2), mean(u2.^2 .+ v2.^2), elapsed_time/60)
 
                 println(log)
 
@@ -210,7 +223,7 @@ function run_model(q1, q2, t0, params; timestepper="RK4", output_every=500)
 
         if mod(n, save_every) == 0          # save streamfunction fields
             if save_bool==true # && n >= start_saving*nt
-                ψ1, ψ2 = invert_qg_pv(q1, q2)
+                ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
 
                 save_streamfunction(save_path, ψ1[:,save_ind_start:save_ind_end], ψ2[:,save_ind_start:save_ind_end], t0+n*dt, params)
                 cnt+=1
@@ -219,14 +232,19 @@ function run_model(q1, q2, t0, params; timestepper="RK4", output_every=500)
         end
 
         if mod(n, plot_every) == 0          # plot whatever is in save_basic_anim_panel() function
-            save_basic_anim_panel(fig_path, ell, q1, q2, U_bg)
+            if plot_basic_bool==true
+                save_basic_anim_panel(fig_path, ell, q1, q2, U_bg)
+            end
+            if plot_BCI_bool==true
+                save_growth_plot(fig_path, ell, q1, q2, U_bg, n, nt, KE1, KE2)
+            end
             ell+=1
         end
 
     end
 
     if save_last==true
-        ψ1, ψ2 = invert_qg_pv(q1, q2)
+        ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy)  # (q1, q2)
 
         save_streamfunction(save_path, ψ1, ψ2, t0+nt*dt, params)
     end

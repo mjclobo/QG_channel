@@ -75,13 +75,29 @@ end
 # Precompute matrix and factorization; this is in x space
 function precompute_operators(Nx, Ny)
     N = Nx * Ny
-    L_op = build_sparse_laplacian_neumann_x(Nx, Ny, dx, dy)
+    idx = (i, j) -> (j - 1) * Nx + i
+
+    # L_op = build_sparse_laplacian_neumann_x(Nx, Ny, dx, dy)
+    L_op = build_sparse_laplacian_dirichlet_y(Nx, Ny, dx, dy)
     I_N = spdiagm(0 => ones(N))
 
     A11 = L_op - F1 * I_N
     A12 = F1 * I_N
     A21 = F2 * I_N
     A22 = L_op - F2 * I_N
+
+    for j in (1, Ny)
+        for i in 1:Nx
+            n = idx(i, j)
+            A11[n, :] .= 0.0
+            A11[n, n] = 1.0
+            A12[n, :] .= 0.0  # remove coupling
+            
+            A22[n, :] .= 0.0
+            A22[n, n] = 1.0
+            A21[n, :] .= 0.0  # remove coupling
+        end
+    end    
 
     A = [A11 A12;
          A21 A22]
@@ -174,9 +190,47 @@ function laplacian_operator_neumann_x(Nx, Ny, dx, dy)
     return L
 end
 
+function laplacian_operator_dirichlet_y(Nx, Ny, dx, dy)
+    dx2 = dx^2
+    dy2 = dy^2
+
+    function L(ψ)
+        if size(ψ) != (Nx, Ny)
+            error("ψ must be size (Nx, Ny)")
+        end
+
+        lap = zeros(Nx, Ny)
+
+        @threads for j in 2:Ny-1  # Only interior points
+            @inbounds begin
+                jp = j + 1
+                jm = j - 1
+
+                @turbo for i in 1:Nx
+                    ip = (i == Nx) ? 1 : i + 1
+                    im = (i == 1)  ? Nx : i - 1
+
+                    d2ψ_dx2 = (ψ[ip, j] - 2ψ[i, j] + ψ[im, j]) / dx2
+                    d2ψ_dy2 = (ψ[i, jp] - 2ψ[i, j] + ψ[i, jm]) / dy2
+
+                    lap[i, j] = d2ψ_dx2 + d2ψ_dy2
+                end
+            end
+        end
+
+        # Set Laplacian to 0 at Dirichlet boundaries (j = 1 and j = Ny)
+        # This ensures they don't interfere with the interior
+        lap[:, 1] .= 0.0
+        lap[:, Ny] .= 0.0
+
+        return lap
+    end
+
+    return L
+end
 
 
-function arakawa_jacobian(a, b)
+function arakawa_jacobian(a, b, dx, dy)
     Nx, Ny = size(a)
     J = zeros(Float64, Nx, Ny)
 
@@ -186,16 +240,14 @@ function arakawa_jacobian(a, b)
 
     ip = [i == Nx ? 1 : i + 1 for i in 1:Nx]
     im = [i == 1  ? Nx : i - 1 for i in 1:Nx]
-    jp = [j == Ny ? j - 1 : j + 1 for j in 1:Ny]
-    jm = [j == 1  ? j + 1 : j - 1 for j in 1:Ny]
 
     @threads for i in 1:Nx
         i_p = ip[i]
         i_m = im[i]
 
-        @inbounds @turbo for j in 1:Ny
-            j_p = jp[j]
-            j_m = jm[j]
+        @inbounds for j in 2:Ny-1  # only interior rows
+            j_p = j + 1
+            j_m = j - 1
 
             dady = (a[i, j_p] - a[i, j_m]) / dy2
             dbdx = (b[i_p, j] - b[i_m, j]) / dx2
@@ -224,6 +276,87 @@ function arakawa_jacobian(a, b)
     end
 
     return J
+end
+
+
+# function arakawa_jacobian(a, b)
+#     Nx, Ny = size(a)
+#     J = zeros(Float64, Nx, Ny)
+
+#     dx2 = 2dx
+#     dy2 = 2dy
+#     denom = 4dx * dy
+
+#     ip = [i == Nx ? 1 : i + 1 for i in 1:Nx]
+#     im = [i == 1  ? Nx : i - 1 for i in 1:Nx]
+#     jp = [j == Ny ? j - 1 : j + 1 for j in 1:Ny]
+#     jm = [j == 1  ? j + 1 : j - 1 for j in 1:Ny]
+
+#     @threads for i in 1:Nx
+#         i_p = ip[i]
+#         i_m = im[i]
+
+#         @inbounds @turbo for j in 1:Ny
+#             j_p = jp[j]
+#             j_m = jm[j]
+
+#             dady = (a[i, j_p] - a[i, j_m]) / dy2
+#             dbdx = (b[i_p, j] - b[i_m, j]) / dx2
+
+#             dadx = (a[i_p, j] - a[i_m, j]) / dx2
+#             dbdy = (b[i, j_p] - b[i, j_m]) / dy2
+
+#             J1 = dadx * dbdy - dady * dbdx
+
+#             J2 = (
+#                 a[i_p, j] * (b[i_p, j_p] - b[i_p, j_m]) -
+#                 a[i_m, j] * (b[i_m, j_p] - b[i_m, j_m]) -
+#                 a[i, j_p] * (b[i_p, j_p] - b[i_m, j_p]) +
+#                 a[i, j_m] * (b[i_p, j_m] - b[i_m, j_m])
+#             ) / denom
+
+#             J3 = (
+#                 a[i_p, j_p] * b[i, j_p] - a[i_m, j_p] * b[i, j_p] -
+#                 a[i_p, j_m] * b[i, j_m] + a[i_m, j_m] * b[i, j_m] -
+#                 a[i_p, j_p] * b[i_p, j] + a[i_p, j_m] * b[i_p, j] +
+#                 a[i_m, j_p] * b[i_m, j] - a[i_m, j_m] * b[i_m, j]
+#             ) / denom
+
+#             J[i, j] = (J1 + J2 + J3) / 3
+#         end
+#     end
+
+#     return J
+# end
+
+
+function build_sparse_laplacian_no_normal_flow_y(Nx, Ny, dx, dy)
+    N = Nx * Ny
+    D = spzeros(N, N)
+
+    idx = (i, j) -> (j - 1) * Nx + i
+
+    for j in 1:Ny
+        for i in 1:Nx
+            n = idx(i, j)
+
+            D[n, n] = -2 / dx^2 - 2 / dy^2
+
+            # Periodic in x
+            D[n, idx(mod1(i - 1, Nx), j)] += 1 / dx^2  # west
+            D[n, idx(mod1(i + 1, Nx), j)] += 1 / dx^2  # east
+
+            # Interior y
+            if j > 1
+                D[n, idx(i, j - 1)] += 1 / dy^2  # south
+            end
+            if j < Ny
+                D[n, idx(i, j + 1)] += 1 / dy^2  # north
+            end
+        end
+    end
+
+    return D
 end
 
 
@@ -261,13 +394,60 @@ function build_sparse_laplacian_neumann_x(Nx, Ny, dx, dy)
     return D
 end
 
+function build_sparse_laplacian_dirichlet_y(Nx, Ny, dx, dy)
+    N = Nx * Ny
+    D = spzeros(N, N)
+
+    idx = (i, j) -> (j - 1) * Nx + i
+
+    for j in 1:Ny
+        for i in 1:Nx
+            n = idx(i, j)
+
+            # Dirichlet in y means boundary rows must be modified later (see below)
+            if j == 1 || j == Ny
+                D[n, n] = 1.0  # placeholder, will be overridden for Dirichlet
+                continue
+            end
+
+            D[n, n] = -2 / dx^2 - 2 / dy^2
+
+            # Periodic in x
+            D[n, idx(mod1(i - 1, Nx), j)] += 1 / dx^2  # west
+            D[n, idx(mod1(i + 1, Nx), j)] += 1 / dx^2  # east
+
+            # Interior points in y
+            D[n, idx(i, j - 1)] += 1 / dy^2  # south
+            D[n, idx(i, j + 1)] += 1 / dy^2  # north
+        end
+    end
+
+    return D
+end
+
+L = laplacian_operator_dirichlet_y(Nx, Ny, dx, dy)
+
+function biharmonic(q; L=L2D)
+    # Enforce homogeneous Dirichlet BCs
+    q[:, 1] .= 0.0
+    q[:, end] .= 0.0
+    lap1 = L(q)
+
+    # Enforce zero at boundaries for the intermediate field
+    lap1[:, 1] .= 0.0
+    lap1[:, end] .= 0.0
+    return L(lap1)
+end
+
 
 ################################################################################
 # define operators used throughout
 ################################################################################
 
 # function for Laplacian function, L2D(ψ)
-L2D = laplacian_operator_neumann_x(Nx, Ny, dx, dy)
+# L2D = laplacian_operator_neumann_x(Nx, Ny, dx, dy)
+L2D = laplacian_operator_dirichlet_y(Nx, Ny, dx, dy)
+
 
 # matrix operator for QG PV inversion
 inversion_ops = precompute_operators(Nx, Ny)
@@ -293,49 +473,100 @@ function compute_qg_pv(ψ1::Array{Float64,2}, ψ2::Array{Float64,2}; lap_op=L2D)
     # lap_ψ1 = L2D(ψ1)
     # lap_ψ2 = L2D(ψ2)
 
-    # Compute PV; should I add beta here? Doesn't matter for most important thing, i.e., model integration
-    q1 = lap_op(ψ1) .+ F1 .* (ψ2 .- ψ1) 
-    q2 = lap_op(ψ2) .+ F2 .* (ψ1 .- ψ2)
+    # Compute PV; note that we don't add beta, as this is only the dynamic QG PV
+    q1 = lap_op(ψ1) .+ F1 .* (ψ2 .- ψ1) # 
+    q2 = lap_op(ψ2) .+ F2 .* (ψ1 .- ψ2)  # 
 
     return q1, q2
 end
 
-
-
-function invert_qg_pv(q1, q2)
+function invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy)
     Nx, Ny = size(q1)
     N = Nx * Ny
 
-    # Vectorize inputs
-    rhs = [vec(q1); vec(q2)]
+    idx = (i, j) -> (j - 1) * Nx + i
+
+    # Vectorize q and apply Dirichlet BC adjustments
+    rhs1 = copy(vec(q1))
+    rhs2 = copy(vec(q2))
+
+    for j in (1, Ny)  # Top and bottom boundaries
+        for i in 1:Nx
+            n = idx(i, j)
+
+            # Dirichlet BC: ψ = ψ_bg → shift terms to RHS
+            # q = ∇²ψ + coupling → for j=1 or j=Ny, ∇²ψ is not defined, so we enforce ψ = ψ_bg
+            rhs1[n] = ψ1_bg[i, j]
+            rhs2[n] = ψ2_bg[i, j]
+        end
+    end
+
+    rhs = [rhs1; rhs2]
 
     # Solve system
     ψ_vec = inversion_ops \ rhs
 
-    # Reshape outputs
+    # Reshape
     ψ1 = reshape(ψ_vec[1:N], Nx, Ny)
     ψ2 = reshape(ψ_vec[N+1:end], Nx, Ny)
 
-    # Remove mean to fix gauge freedom
-    ψ̄ = mean((ψ1 .+ ψ2) ./ 2)
-    ψ1 .-= ψ̄
-    ψ2 .-= ψ̄
+    # Manually insert boundary values to enforce ψ = ψ_bg at top/bottom
+    ψ1[:, 1] .= ψ1_bg[:, 1]
+    ψ1[:, end] .= ψ1_bg[:, end]
+
+    ψ2[:, 1] .= ψ2_bg[:, 1]
+    ψ2[:, end] .= ψ2_bg[:, end]
+
+    # # Remove mean to fix gauge freedom
+    # ψ̄ = mean((ψ1 .+ ψ2) ./ 2)
+    # ψ1 .-= ψ̄
+    # ψ2 .-= ψ̄
 
     return ψ1, ψ2
 end
 
 
-function rhs(q1, q2)
-    ψ1, ψ2 = invert_qg_pv(q1, q2) #, k2, F, Ly_op) #, ops_dirichlet)
+# function invert_qg_pv(q1, q2)
+#     Nx, Ny = size(q1)
+#     N = Nx * Ny
 
-    J1 =  arakawa_jacobian(ψ1, q1) # zeros(Nx, Ny)  # 
-    J2 =  arakawa_jacobian(ψ2, q2) # zeros(Nx, Ny)  # 
+#     # Vectorize inputs
+#     rhs = [vec(q1); vec(q2)]
+
+#     # Solve system
+#     ψ_vec = inversion_ops \ rhs
+
+#     # Reshape outputs
+#     ψ1 = reshape(ψ_vec[1:N], Nx, Ny)
+#     ψ2 = reshape(ψ_vec[N+1:end], Nx, Ny)
+
+#     # Remove mean to fix gauge freedom
+#     ψ̄ = mean((ψ1 .+ ψ2) ./ 2)
+#     ψ1 .-= ψ̄
+#     ψ2 .-= ψ̄
+
+#     return ψ1, ψ2
+# end
+
+
+function rhs(q1, q2)
+    ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # invert_qg_pv(q1, q2)
+
+    # enforce_no_normal_flow!(ψ1)
+    # enforce_no_normal_flow!(ψ2)
+
+    J1 =  arakawa_jacobian(ψ1, q1, dx, dy) # zeros(Nx, Ny)  # 
+    J2 =  arakawa_jacobian(ψ2, q2, dx, dy) # zeros(Nx, Ny)  # 
 
     dq1dt = -J1 .- beta .* u_from_psi(ψ1)[2]   # beta * v, where v = dψ/dx
     dq2dt = -J2 .- beta .* u_from_psi(ψ2)[2]
 
-    dq1dt .-= ν .* L2D(L2D(q1))
-    dq2dt .-= ν .* L2D(L2D(q2))
+    # dq1dt .-= ν .* L2D(L2D(q1 .- q1_bg))
+    # dq2dt .-= ν .* L2D(L2D(q2 .- q2_bg))
+
+    dq1dt .-= ν .* biharmonic(q1 .- q1_bg)
+    dq2dt .-= ν .* biharmonic(q2 .- q2_bg)
+    
     dq2dt .-= r .* L2D(ψ2)
 
     # Thermal damping toward background shear
@@ -514,4 +745,111 @@ function diagnose_meridional_velocity_from_omega_nonperiodic_y(
     vbar2_zonal = mean(vbar2, dims=1)
 
     return vbar1_zonal[:], vbar2_zonal[:], ω
+end
+
+
+function diagnose_meridional_velocity_from_omega_nonperiodic_y_boussinesq(
+    ψ1::Array{Float64,2}, ψ2::Array{Float64,2},
+    dx::Float64, dy::Float64,
+    H1::Float64, H2::Float64
+)
+
+    Nx, Ny = size(ψ1)
+
+    # --- Finite differences in y, periodic in x ---
+    function ddx(field)
+        (circshift(field, (-1, 0)) .- circshift(field, (1, 0))) ./ (2dx)
+    end
+
+    function ddy(field)
+        out = similar(field)
+        out[:, 2:Ny-1] .= (field[:, 3:Ny] .- field[:, 1:Ny-2]) ./ (2dy)
+        out[:, 1] .= (field[:, 2] .- field[:, 1]) ./ dy
+        out[:, end] .= (field[:, end] .- field[:, end-1]) ./ dy
+        return out
+    end
+
+    function d2dy2(field)
+        out = similar(field)
+        out[:, 2:Ny-1] .= (field[:, 3:Ny] .- 2 .* field[:, 2:Ny-1] .+ field[:, 1:Ny-2]) ./ dy^2
+        out[:, 1] .= (field[:, 2] .- 2 .* field[:, 1]) ./ dy^2
+        out[:, end] .= (field[:, end-1] .- 2 .* field[:, end]) ./ dy^2
+        return out
+    end
+
+    # --- Geostrophic velocities ---
+    u1 = -ddy(ψ1); v1 = ddx(ψ1)
+    u2 = -ddy(ψ2); v2 = ddx(ψ2)
+
+    # --- Temperature gradient ~ interface displacement ~ ψ1 - ψ2
+    T = ψ1 .- ψ2
+    Tx = ddx(T)
+    Ty = ddy(T)
+
+    function compute_Q(u, v)
+        ux = ddx(u); uy = ddy(u)
+        vx = ddx(v); vy = ddy(v)
+
+        Qx = - (ux .* Tx .+ vx .* Ty)
+        Qy = - (uy .* Tx .+ vy .* Ty)
+        return Qx, Qy
+    end
+
+    Qx1, Qy1 = compute_Q(u1, v1)
+    Qx2, Qy2 = compute_Q(u2, v2)
+
+    Qx = 0.5 .* (Qx1 .+ Qx2)
+    Qy = 0.5 .* (Qy1 .+ Qy2)
+
+    divQ = ddx(Qx) .+ ddy(Qy)
+
+    # --- Solve Poisson equation: ∇² w = -2 ∇·Q ---
+    rhs = -2 .* divQ
+    w = zeros(Nx, Ny)
+
+    # FFT wave numbers in x
+    kx = [2π * (i <= Nx ÷ 2 ? i - 1 : i - Nx - 1) / (Nx * dx) for i in 1:Nx]
+
+    for (ix, k) in enumerate(kx)
+        λx = -(k^2)
+
+        main_diag = fill(-2/dy^2 + λx, Ny)
+        off_diag = fill(1/dy^2, Ny - 1)
+        A = Tridiagonal(off_diag, main_diag, off_diag)
+
+        rhs_slice = rhs[ix, :]
+        w[ix, :] = A \ rhs_slice
+    end
+
+    # --- Ageostrophic meridional velocities ---
+    vbar1 = -w ./ H1
+    vbar2 = +w ./ H2
+
+    # Zonal means
+    vbar1_zonal = mean(vbar1, dims=1)
+    vbar2_zonal = mean(vbar2, dims=1)
+
+    return vbar1_zonal[:], vbar2_zonal[:], w
+end
+
+function enforce_no_normal_flow!(ψ)
+    ψ[:, 1] .= mean(ψ[:, 1])     # bottom wall: constant ψ in x
+    ψ[:, end] .= mean(ψ[:, end]) # top wall: constant ψ in x
+end
+
+
+function apply_bc_with_background!(ψ1, ψ2, ψ1_bg, ψ2_bg)
+    # Dirichlet BC at walls (no normal flow)
+    ψ1[:, 1] .= ψ1_bg[1]
+    ψ1[:, end] .= ψ1_bg[end]
+
+    ψ2[:, 1] .= ψ2_bg[1]
+    ψ2[:, end] .= ψ2_bg[end]
+
+    # No-stress BC (match curvature with background)
+    ψ1[:, 2] .= 2ψ1_bg[2] - ψ1_bg[1]
+    ψ1[:, end-1] .= 2ψ1_bg[end-1] - ψ1_bg[end]
+
+    ψ2[:, 2] .= 2ψ2_bg[2] - ψ2_bg[1]
+    ψ2[:, end-1] .= 2ψ2_bg[end-1] - ψ2_bg[end]
 end
