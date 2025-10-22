@@ -5,12 +5,12 @@ Getting started
 Installing Julia
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 For official instructions on instaling Julia,
-please refer to `this website<https://julialang.org/install/>`_.
+please refer to `this website <https://julialang.org/install/>`_.
 
 
 Work environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-I use the `VS Code<https://code.visualstudio.com/download>`_ code
+I use the `VS Code <https://code.visualstudio.com/download>`_ code
 editor/graphical user interface.
 
 The Jupyter interactive environment is another great option!
