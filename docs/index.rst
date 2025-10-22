@@ -8,7 +8,7 @@ Here is some basic documentation and examples for a (work-in-progress) two-layer
 Introduction
 --------
 This is a publically available two-layer quasi-geostrophic model that
-might be used for pedagogy or research.
+can be used for pedagogy or research.
 
 Any questions, whether related to the program or related to this documentation, may be
 sent to *mattlobo@princeton.edu*.
@@ -20,7 +20,9 @@ Contents
 
    install
    modeleqns
+   numerics
    zonaltheory
+   gettingstarted
    exampleruns
    examplediagnostics
    

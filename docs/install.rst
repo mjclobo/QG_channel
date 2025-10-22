@@ -1,23 +1,23 @@
 =========================================
-CWT_Multi installation
+QG_channel installation
 =========================================
 
-How do I install CWT_Multi?
+How do I install the QG_channel model?
 ~~~~~~~~~~~~~~~~~~~~~~~~~
-We recommend cloning the CWT_Multi Github repository,
+I recommend cloning the QG_channel Github repository,
 using Git.
 
 Also, if you plan on making changes to the code, you should
-fork the main CWT_Multi repository.
+fork the main QG_channel repository.
 Whenever you'd like to contribute your changes to the official
-version of CWT_Multi, just submit a pull request.
+version of QG_channel, just submit a pull request.
 
 
-Do I need Github in order to install CWT_Multi?
+Do I need Github in order to install QG_channel?
 ~~~~~~~~~~~~~~~~~~~~
 
 No.
-In order to install a .zip file of CWT_Multi, without
+In order to install a .zip file of QG_channel, without
 a Github account, just:
 
 - Click on the green square labeled *Clone*
@@ -27,4 +27,4 @@ However, there are many advantages to having a Github account, such as:
 
 - Tracking changes you make to your version of the code
 - Having a seamless pipeline for downloading updated versions of the code
-- Being able to contribute improvements to the CWT_Multi source code
+- Being able to contribute improvements to the QG_channel source code
