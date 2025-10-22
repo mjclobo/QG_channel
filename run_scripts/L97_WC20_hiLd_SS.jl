@@ -36,8 +36,8 @@ y = collect(0:dy:Ly-dy)
 f0 = 1.0 # 1e-4
 beta = 0.25 # 1.4e-11; beta promotes unstable edge waves
 g = 1 # 9.81
-H1 = 5.0 # 2000.0
-H2 = 5.0 # 2000.0
+H1 = 1.0 # 2000.0
+H2 = 1.0 # 2000.0
 ρ0 = 1.0
 Δρ = 0.5  # 0.75
 
@@ -59,7 +59,7 @@ Ld = sqrt((H1+H2) * gprime) / 2 / f0    # for beta=0.25 and U0=1, LSA says Ld \l
 cfl = 0.05      # nominal CFL
 
 dt = cfl * minimum([dx, dy]) / U0       # time step
-nt = 20000                              # number of time steps
+nt = 30000                              # number of time steps
 
 timestep_method = "RK4" # "RK4_int"     # options are: RK4, RK4_int
 
@@ -75,7 +75,7 @@ for file in src_files include(src_dir*file) end
 # Define background flow profile
 ################################################################################
 
-WC = 20  # Width of boundary where background flow decays to zero (max of 0.5)
+WC = 20  # Half-width of jet center where U=1
 
 ψ_diff_bg, U_bg = Lee1997_bg_jet(U0, WC)
 
@@ -87,7 +87,7 @@ WC = 20  # Width of boundary where background flow decays to zero (max of 0.5)
 
 # this saves meridional bands (full zonal extent) of i) ψ1, ii) ψ2, and iii) t
 save_bool = true
-save_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/L97_WC20_SS/"
+save_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/L97_WC20_hiLd_SS/"
 y_width = 0.6   # meridional width of domain that is saved; max of 1 will save whole meridional extent of domain
 save_every = round(Int,nt/1000)      # period of save frequency
 
@@ -99,8 +99,8 @@ save_last = false
 
 # this plots panels at fig_path; the plot function (defined in output_fcns.jl) can be modified to be whatever you want to see
 plot_bool = true
-fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/L97_WC20_SS/"
-plot_every = round(Int,nt/250)      # period of plot output frequency
+fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/L97_WC20_hiLd_SS/"
+plot_every = round(Int,nt/500)      # period of plot output frequency
 
 
 ################################################################################
@@ -120,7 +120,7 @@ r = 0.05         # Ekman friction (1/s)
 ################################################################################
 # Set initial conditions using a restart file
 ################################################################################
-restart_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/L97_WC20_init/"
+restart_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/L97_WC20_hiLd_init/"
 
 ψfiles = readdir(restart_path)
 

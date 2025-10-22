@@ -36,8 +36,8 @@ y = collect(0:dy:Ly-dy)
 f0 = 1.0 # 1e-4
 beta = 0.25 # 1.4e-11; beta promotes unstable edge waves
 g = 1 # 9.81
-H1 = 5 # 2000.0
-H2 = 5 # 2000.0
+H1 = 5.0 # 2000.0
+H2 = 5.0 # 2000.0
 ρ0 = 1.0
 Δρ = 0.5  # 0.75
 
@@ -67,7 +67,7 @@ timestep_method = "RK4" # "RK4_int"     # options are: RK4, RK4_int
 # Load source code
 ################################################################################
 
-src_dir = "/home/matt/Desktop/research/QG/channel_model/src/"
+src_dir = "/home/matt/Desktop/research/QG/QG_channel/src/"
 src_files = readdir(src_dir)
 for file in src_files include(src_dir*file) end
 
@@ -77,9 +77,12 @@ for file in src_files include(src_dir*file) end
 
 WC = 20  # Width of boundary where background flow decays to zero (max of 0.5)
 
-ψ_diff_bg, U_bg = Lee1997_bg_jet(U0, WC)
+ψ1_bg, U_bg = Lee1997_bg_jet(U0, WC)
 
-ψ_diff_bg = ψ_diff_bg .* ones(Nx, Ny)
+ψ1_bg = ψ1_bg .* ones(Nx, Ny)
+ψ2_bg = zeros(Nx, Ny)
+
+ψ_diff_bg = ψ1_bg .- ψ2_bg
 
 ################################################################################
 # Define paths for saving streamfunction files and figures; and frequency of output
@@ -87,7 +90,7 @@ WC = 20  # Width of boundary where background flow decays to zero (max of 0.5)
 
 # this saves meridional bands (full zonal extent) of i) ψ1, ii) ψ2, and iii) t
 save_bool = true
-save_path = "/home/matt/Desktop/research/QG/channel_model/data/L97_WC20_init/"
+save_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/L97_WC20_init_fixedcb/"
 y_width = 0.6   # meridional width of domain that is saved; max of 1 will save whole meridional extent of domain
 save_every = round(Int,nt/20)      # period of save frequency
 
@@ -98,9 +101,10 @@ save_last = true
 
 
 # this plots panels at fig_path; the plot function (defined in output_fcns.jl) can be modified to be whatever you want to see
-plot_bool = true
-fig_path = "/home/matt/Desktop/research/QG/channel_model/anim/L97_WC20_init/"
-plot_every = round(Int,nt/20)      # period of plot output frequency
+plot_basic_bool=true
+plot_BCI_bool=false
+fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/L97_WC20_init/"
+plot_every = round(Int,nt/250)      # period of plot output frequency
 
 
 ################################################################################
@@ -121,13 +125,15 @@ r = 0.05         # Ekman friction (1/s)  L97 uses 0.1
 # Set initial conditions
 ################################################################################
 
-ψ1 = deepcopy(ψ_diff_bg) # zeros(Nx, Ny) # 
-ψ2 = zeros(Nx, Ny)
+ψ1 = deepcopy(ψ1_bg) # zeros(Nx, Ny) # 
+ψ2 = deepcopy(ψ2_bg)
+
+q1_bg, q2_bg = compute_qg_pv(ψ1_bg, ψ2_bg)
 
 q1, q2 = compute_qg_pv(ψ1, ψ2)
 
-q1 .+= 1e0 * randn(Nx, Ny)
-q2 .+= 1e0 * randn(Nx, Ny)
+q1 .+= 1e-2 * randn(Nx, Ny)
+q2 .+= 1e-2 * randn(Nx, Ny)
 
 t0 = 0    # initial timestamp (in seconds)
 

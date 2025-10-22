@@ -39,8 +39,8 @@ y = collect(0:dy:Ly-dy)
 f0 = 1.0 # 1e-4
 beta = 0.25 # 1.4e-11; beta promotes unstable edge waves
 g = 1 # 9.81
-H1 = 5 # 2000.0
-H2 = 5 # 2000.0
+H1 = 5.0 # 2000.0
+H2 = 5.0 # 2000.0
 ρ0 = 1.0
 Δρ = 0.5  # 0.75
 
@@ -88,11 +88,11 @@ WC = 20  # Width of boundary where background flow decays to zero (max of 0.5)
 # Define paths for saving streamfunction files and figures; and frequency of output
 ################################################################################
 
-save_path = "/home/matt/Desktop/research/QG/QG_channel/data/L97_WC20_SS/"
+save_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/L97_WC10_SS/"
 y_width = 0.6   # meridional width of domain that is saved; max of 1 will save whole meridional extent of domain
 
 
-fig_path = "/home/matt/Desktop/research/QG/QG_channel/anim/L97_WC20_anim_output/"
+fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/L97_WC10_anim_output/"
 plotname = "snapshots"
 
 ################################################################################
@@ -149,8 +149,8 @@ global mean_count = 0
 
 ##
 
-# i=1
-# t=t_array[i]
+i=1
+t=t_array[i]
 for (i, t) in enumerate(t_array[1:4:end])
     savedata = load(save_path * file_start * string(t) * file_end)
 
@@ -173,8 +173,9 @@ for (i, t) in enumerate(t_array[1:4:end])
     u1_bar = mean(u1_snap, dims=1)
     u2_bar = mean(u2_snap, dims=1)
 
-    v1_bar, v2_bar = diagnose_zonal_mean_meridional_velocity(ψ1_snap, ψ2_snap, dx, dy, beta, f0, gprime, H1, H2, L2D_yband)
+    # v1_bar, v2_bar = diagnose_zonal_mean_meridional_velocity(ψ1_snap, ψ2_snap, dx, dy, beta, f0, gprime, H1, H2, L2D_yband)
     # v1_bar, v2_bar = diagnose_meridional_velocity_from_omega_nonperiodic_y(ψ1_snap, ψ2_snap, dx, dy)
+    v1_bar, v2_bar , w = diagnose_meridional_velocity_from_omega_nonperiodic_y_boussinesq(ψ1_snap, ψ2_snap, dx, dy, H1, H2)
         
     u1_prime = u1_snap .- u1_bar
     v1_prime = v1_snap # .- v1_bar
@@ -201,8 +202,8 @@ for (i, t) in enumerate(t_array[1:4:end])
     v2η_bar = mean(v2_prime .* (-η_prime), dims=1)
 
     # define residual velocity
-    v1_bar_star = v1_bar .+ v1η_bar./ H1
-    v2_bar_star = v2_bar .+ v2η_bar ./ H2    
+    v1_bar_star = v1_bar' .+ v1η_bar./ H1
+    v2_bar_star = v2_bar' .+ v2η_bar ./ H2    
 
     # define vorticity fluxes
     v1ζ1_bar = mean(v1_prime .* ζ1_prime, dims=1)
