@@ -3,9 +3,11 @@ A guide to running the model
 =========================================
 Here we provide an overview of the suggested method for running the model.
 The model used here closely corresponds to that of Lee (1997).
+There are two files in the example_runs directory that provide a starting point for
+running the model.
 The suggested method is to first spin up the model using
 the L97_WC4_init.jl file.
-The one uses the L97_WC4_SS.jl file to initialize the model from the end of
+Then the user runs the L97_WC4_SS.jl file to initialize the model from the end of
 the spin-up run, and compute steady-state statistics of the turbulent flow.
 We now provide more details on these files.
 First, we provide some background on the model setup.
