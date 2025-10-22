@@ -69,7 +69,9 @@ Open the L97_WC4_init.jl file.
 Define the appropriate paths for finding source code, saving data, and
 possibly saving figures.
 
-
+.. image:: https://img.youtube.com/vi/bwER6al1rj4/maxresdefault.jpg
+    :alt: Two-layer QG baroclinic instability
+    :target: https://www.youtube.com/watch?v=bwER6al1rj4
 
 Steady-state model run
 ~~~~~~~~~~~~~~~~~~~~~~~~

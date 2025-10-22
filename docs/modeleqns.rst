@@ -17,6 +17,7 @@ The governing equations for the present two-layer QG model are
    \right )
    - \nu \nabla^4 q_{1}
    \end{equation}
+.. math::
    \begin{equation}
    \partial_{t} q_{2}
    + \mathrm{J} (\psi_{2}, \, q_{2} )
