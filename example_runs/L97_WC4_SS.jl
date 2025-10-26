@@ -59,7 +59,7 @@ Ld = sqrt((H1+H2) * gprime) / 2 / f0    # for beta=0.25 and U0=1, LSA says Ld \l
 cfl = 0.05      # nominal CFL
 
 dt = cfl * minimum([dx, dy]) / U0       # time step
-nt = 15000                              # number of time steps
+nt = 20000                              # number of time steps
 
 timestep_method = "RK4" # "RK4_int"     # options are: RK4, RK4_int
 
@@ -91,9 +91,9 @@ WC = 4  # Width of boundary where background flow decays to zero (max of 0.5)
 
 # this saves meridional bands (full zonal extent) of i) ψ1, ii) ψ2, and iii) t
 save_bool = true
-save_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/L97_WC4_BCI/"
-y_width = 0.75  # meridional width of domain that is saved; max of 1 will save whole meridional extent of domain
-save_every = round(Int,nt/20)      # period of save frequency
+save_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/L97_WC4_SS/"
+y_width = 0.5  # meridional width of domain that is saved; max of 1 will save whole meridional extent of domain
+save_every = round(Int,nt/500)      # period of save frequency
 
 
 # this saves full streamfunction field (and time) at end of simulation run, in case you'd like to use the field as initial conditions later on
@@ -103,9 +103,9 @@ save_last = true
 
 # this plots panels at fig_path; the plot function (defined in output_fcns.jl) can be modified to be whatever you want to see
 plot_basic_bool = false
-plot_BCI_bool = true
-fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/L97_WC4_BCI/"
-plot_every = round(Int,nt/400)      # period of plot output frequency
+plot_BCI_bool = false
+fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/L97_WC4_SS/"
+plot_every = round(Int,nt/20)      # period of plot output frequency
 
 
 ################################################################################
@@ -138,6 +138,8 @@ savedata = load(restart_path * file_start * string(t_array[end]) * file_end)
 ψ2_restart = savedata["jld_data"]["ψ2"]
 
 q1, q2 = compute_qg_pv(ψ1_restart, ψ2_restart)
+
+q1_bg, q2_bg = compute_qg_pv(ψ1_bg, ψ2_bg)
 
 ################################################################################
 # Run model from initial conditions

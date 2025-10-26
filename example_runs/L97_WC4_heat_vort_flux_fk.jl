@@ -59,7 +59,7 @@ Ld = sqrt((H1+H2) * gprime) / 2 / f0    # for beta=0.25 and U0=1, LSA says Ld \l
 cfl = 0.05      # nominal CFL
 
 dt = cfl * minimum([dx, dy]) / U0       # time step
-nt = 15000                              # number of time steps
+nt = 20000                              # number of time steps
 
 timestep_method = "RK4" # "RK4_int"     # options are: RK4, RK4_int
 
@@ -86,63 +86,87 @@ WC = 4  # Width of boundary where background flow decays to zero (max of 0.5)
 
 
 ################################################################################
-# Define paths for saving streamfunction files and figures; and frequency of output
+# Define paths where saved data is
 ################################################################################
 
 # this saves meridional bands (full zonal extent) of i) ψ1, ii) ψ2, and iii) t
-save_bool = true
-save_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/L97_WC4_init/"
-y_width = 0.75  # meridional width of domain that is saved; max of 1 will save whole meridional extent of domain
-save_every = round(Int,nt/20)      # period of save frequency
+save_bool = false
+save_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/L97_WC4_SS/"
+y_width = 0.5  # meridional width of domain that is saved; max of 1 will save whole meridional extent of domain
+save_every = round(Int,nt/500)      # period of save frequency
 
 
 # this saves full streamfunction field (and time) at end of simulation run, in case you'd like to use the field as initial conditions later on
 # directory is defined by save_path (above)
-save_last = true
+save_last = false
 
 
 # this plots panels at fig_path; the plot function (defined in output_fcns.jl) can be modified to be whatever you want to see
 plot_basic_bool = false
-plot_BCI_bool = true
-fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/L97_WC4_BCI_beta/"
-plot_every = round(Int,nt/400)      # period of plot output frequency
+plot_BCI_bool = false
+fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/L97_WC4_SS_wave_freq_fluxes/"
+plot_every = round(Int,nt/20)      # period of plot output frequency
 
-
+plotname="wave_freq_fluxes"
 ################################################################################
 # Damping (biharmonic viscosity, linear friction, and thermal damping)
 ################################################################################
-ν = 1e-3 #  0.01 * dx^4 / dt # 1e6          # Hyperviscosity (m⁴/s)  L97 uses 6e-3
+ν = 1e-3 #  0.01 * dx^4 / dt # 1e6          # Hyperviscosity (m⁴/s)
 
-r = 0.05         # Ekman friction (1/s)  L97 uses 0.1
+r = 0.05         # Ekman friction (1/s)
 α = 30^-1        # Thermal damping (1/s)
 
 ################################################################################
-# Set initial conditions
+# Define model params struct
 ################################################################################
 
-ψ1 = deepcopy(ψ_diff_bg) # zeros(Nx, Ny) # 
-ψ2 = zeros(Nx, Ny)
-
-q1_bg, q2_bg = compute_qg_pv(ψ1_bg, ψ2_bg)
-
-q1, q2 = compute_qg_pv(ψ1, ψ2)
-
-# seed!(2222)
-seed!(1234)
-
-q1 .+= 1e-2 * randn(Nx, Ny)
-q2 .+= 1e-2 * randn(Nx, Ny)
-
-
-t0 = 0    # initial timestamp (in seconds)
-
-################################################################################
-# Run model from initial conditions
-################################################################################
 include("../define_vars.jl")
 params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, ν, r, α, U0, WC)
 
-run_model(q1, q2, t0, params)
+# ################################################################################
+# # Diagnose latitude-time frequency spectra of eddy fluxes of heat and vorticity
+# ################################################################################
+cmax = 3.0          # maximum phase speed considered
+ncbins = round(Int, 128)             # number of phase speed bins
+
+spec_params = make_spectral_params(params, dx, dy, cmax, ncbins)
+
+# construct Nx x Ny_saved x nt arrays of ψ1 and ψ2
+save_ind_start = floor(Int, Ny * y_width / 2)
+save_ind_end   = floor(Int, Ny * (1 - y_width / 2))
+Ny_saved = save_ind_end - save_ind_start + 1
+
+t_array = define_t_of_saved_files(Ny, save_path)[1:end-1]
+ψ1_of_t, ψ2_of_t = construct_psi_of_t(t_array, Ny_saved, save_path)
 
 
-# now you can run L97_WC4_SS.jl to calculate steady-state turbulent statistics
+# calculate spectra of eddy fluxes
+heat_flux, vort_flux, c, Ubar = compute_phase_speed_spectra(ψ1_of_t, ψ2_of_t, spec_params) # Ubar is U1, ∂yU1, U2, ∂yU2
+
+
+# # alternately, use moving blocks
+# block_len = round(Int, length(t_array)/2)
+# block_stride = round(Int, 0.5 * block_len)
+# heat_flux, vort_flux, c = compute_flux_spectra_block(ψ1_of_t, ψ2_of_t, params, dx, dy, spec_params, block_len, block_stride)
+
+# heat_flux = copy(F_heat)
+# vort_flux = copy(F_vort)
+
+fig, ax = plt.subplots(1, 2, figsize=(10,5))
+
+ax[1].pcolormesh(-c, y[save_ind_start:save_ind_end], heat_flux', vmin=-maximum(abs.(heat_flux)), vmax=maximum(abs.(heat_flux)), cmap=PyPlot.cm.bwr)
+ax[1].plot(Ubar[:,1], y[save_ind_start:save_ind_end])
+ax[1].plot(Ubar[:,3], y[save_ind_start:save_ind_end])
+plt.grid()
+
+
+ax[2].pcolormesh(-c, y[save_ind_start:save_ind_end], vort_flux', vmin=-maximum(abs.(vort_flux)), vmax=maximum(abs.(vort_flux)), cmap=PyPlot.cm.bwr)
+ax[2].plot(Ubar[:,1], y[save_ind_start:save_ind_end])
+ax[2].plot(Ubar[:,3], y[save_ind_start:save_ind_end])
+plt.grid()
+
+
+
+sum_savename = @sprintf("%s.png", joinpath(fig_path, "heat_vort_flux"))
+PyPlot.savefig(sum_savename)
+

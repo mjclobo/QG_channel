@@ -161,28 +161,34 @@ function save_growth_plot(fig_path, ell, q1, q2, U_bg, n, nt, KE1, KE2)
     ###############################################################################
     BCI_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["blue", "black", "green", "black", "red", "black", "yellow", "black", "blue"])    
 
-    q1_bg_loc = mean(q1, dims=1)
-    q2_bg_loc = mean(q2, dims=1)
+    # q1_bg_loc = mean(q1, dims=1) .+ beta * y'
+    # q2_bg_loc = mean(q2, dims=1) .+ beta * y'
+    q1_bg_loc = q1_bg .+ beta * y'
+    q2_bg_loc = q2_bg .+ beta * y'
     q1_anom = q1 .- q1_bg
     q2_anom = q2 .- q2_bg
 
     norm1=plt.Normalize(minimum(q1_bg_loc), maximum(q1_bg_loc))
     levs1=collect(range(-maximum(abs.(q1_anom)), maximum(abs.(q1_anom)), 10))
     levs1 = [levs1[1:4]; levs1[7:end]]
-    pc1=ax[1].pcolormesh(x, y, q1', cmap=BCI_cmap, norm=norm1)
+    pc1=ax[1].pcolormesh(x, y, (q1 .+ beta * y')', cmap=BCI_cmap, norm=norm1)
     ax[1].contour(x, y, q1_anom', colors="#65fe08", levels= levs1) # 4.0 .* [-0.75, -0.25, 0.25, 0.75], linewidth=0.5)
     ax[1].set_title(L"q_{1} \quad (\mathrm{color:} \, q^\mathrm{total}_{1}, \ \mathrm{lines:} \, q_{1}^{\prime})", fontsize=fsize)
 
     cbpc1_ax = fig.add_axes([0.075,0.98,0.215,0.03])
-    cbar_pc1 = fig.colorbar(pc1, ax=ax[1], location="top", pad=0.2, ticks=[minimum(q1_bg_loc), maximum(q1_bg_loc)], cax=cbpc1_ax)
-    cbar_pc1.ax.set_xticklabels([L"\mathrm{min.} \{ \overline{q}_{k} \} ", L"\mathrm{max.} \{ \overline{q}_{k} \} "], fontsize=fsize)
+    cbar_pc1 = fig.colorbar(pc1, ax=ax[1], location="top", pad=0.2, cax=cbpc1_ax)
+    # cbar_pc1 = fig.colorbar(pc1, ax=ax[1], location="top", pad=0.2, ticks=[minimum(q1_bg_loc), maximum(q1_bg_loc)], cax=cbpc1_ax)
+    # cbar_pc1.ax.set_xticklabels([L"\mathrm{min.} \{ \overline{q}_{k} \} ", L"\mathrm{max.} \{ \overline{q}_{k} \} "], fontsize=fsize)
 
     norm2=plt.Normalize(minimum(q2_bg_loc), maximum(q2_bg_loc))
     levs2=collect(range(-maximum(abs.(q2_anom)), maximum(abs.(q2_anom)), 10))
     levs2 = [levs2[1:4]; levs2[7:end]]
-    ax[2].pcolormesh(x, y, q2', cmap=BCI_cmap, norm=norm2)
+    pc2=ax[2].pcolormesh(x, y, (q2 .+ beta * y')', cmap=BCI_cmap, norm=norm2)
     ax[2].contour(x, y, q2_anom', colors="#65fe08", levels= levs2) # 1.0 .* [-0.75, -0.25, 0.25, 0.75], linewidth=0.5)
     ax[2].set_title(L"q_{2} (\mathrm{color:} \, q^\mathrm{total}_{2}, \ \mathrm{lines:} \, q_{2}^{\prime})", fontsize=fsize)
+
+    cbpc2_ax = fig.add_axes([0.075,-1.05,0.215,0.03])
+    cbar_pc2 = fig.colorbar(pc2, ax=ax[2], location="top", pad=0.2, cax=cbpc2_ax)
 
     for axn in ax[1:4]
         axn.set_xlabel("x", fontsize=fsize)

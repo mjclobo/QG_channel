@@ -138,14 +138,20 @@ heat_flux, vort_flux, c = compute_flux_spectra_block(ψ1_of_t, ψ2_of_t, params,
 fig, ax = plt.subplots(1, 2, figsize=(10,5))
 
 ax[1].pcolormesh(-c, y[save_ind_start:save_ind_end], heat_flux', vmin=-maximum(abs.(heat_flux)), vmax=maximum(abs.(heat_flux)), cmap=PyPlot.cm.bwr)
-ax[1].plot(Ubar[:,1], y[save_ind_start:save_ind_end])
-ax[1].plot(Ubar[:,3], y[save_ind_start:save_ind_end])
+ax[1].plot(Ubar[:,1], y[save_ind_start:save_ind_end], label=L"\overline{u}_{1}")
+ax[1].plot(Ubar[:,3], y[save_ind_start:save_ind_end], label=L"\overline{u}_{2}")
+ax[1].set_title(L"\mathrm{Eddy \, heat \, flux,} ")
+ax[1].set_ylabel(L"y")
+ax[1].set_xlabel(L"c")
 plt.grid()
 
 
 ax[2].pcolormesh(-c, y[save_ind_start:save_ind_end], vort_flux', vmin=-maximum(abs.(vort_flux)), vmax=maximum(abs.(vort_flux)), cmap=PyPlot.cm.bwr)
-ax[2].plot(Ubar[:,1], y[save_ind_start:save_ind_end])
-ax[2].plot(Ubar[:,3], y[save_ind_start:save_ind_end])
+ax[2].plot(Ubar[:,1], y[save_ind_start:save_ind_end], label=L"\overline{u}_{1}")
+ax[2].plot(Ubar[:,3], y[save_ind_start:save_ind_end], label=L"\overline{u}_{2}")
+ax[2].set_title(L"\mathrm{Eddy \, vorticity \, flux,} ")
+ax[2].set_ylabel(L"y")
+ax[2].set_xlabel(L"c")
 plt.grid()
 
 
