@@ -102,7 +102,7 @@ save_last = true
 
 
 # this plots panels at fig_path; the plot function (defined in output_fcns.jl) can be modified to be whatever you want to see
-plot_basic_bool = false
+plot_basic_bool = true
 plot_BCI_bool = true
 fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/L97_WC4_BCI/"
 plot_every = round(Int,nt/400)      # period of plot output frequency
@@ -132,6 +132,10 @@ seed!(1234)
 
 q1 .+= 1e-2 * randn(Nx, Ny)
 q2 .+= 1e-2 * randn(Nx, Ny)
+
+
+# q1 = 1e-2 * randn(Nx, Ny)
+# q2 = 1e-2 * randn(Nx, Ny)
 
 
 t0 = 0    # initial timestamp (in seconds)

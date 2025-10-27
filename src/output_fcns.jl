@@ -124,8 +124,8 @@ function save_growth_plot(fig_path, ell, q1, q2, U_bg, n, nt, KE1, KE2)
     ########################################################
     mid_ind = ceil(length(y)/2) + 0.5
     pm_ind = ceil((3.5 * WC/Ly) * length(y)) + 0.5
-    y_lower_lim = y[Int(mid_ind-pm_ind)]
-    y_upper_lim = y[Int(mid_ind+pm_ind)]
+    y_lower_lim = y[1]  # y[Int(mid_ind-pm_ind)]
+    y_upper_lim = y[end] # y[Int(mid_ind+pm_ind)]
     ######################################################
     plotname = "BCI_snapshots"
     ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
@@ -161,8 +161,10 @@ function save_growth_plot(fig_path, ell, q1, q2, U_bg, n, nt, KE1, KE2)
     ###############################################################################
     BCI_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["blue", "black", "green", "black", "red", "black", "yellow", "black", "blue"])    
 
+
     # q1_bg_loc = mean(q1, dims=1) .+ beta * y'
     # q2_bg_loc = mean(q2, dims=1) .+ beta * y'
+
     q1_bg_loc = q1_bg .+ beta * y'
     q2_bg_loc = q2_bg .+ beta * y'
     q1_anom = q1 .- q1_bg
@@ -187,7 +189,7 @@ function save_growth_plot(fig_path, ell, q1, q2, U_bg, n, nt, KE1, KE2)
     ax[2].contour(x, y, q2_anom', colors="#65fe08", levels= levs2) # 1.0 .* [-0.75, -0.25, 0.25, 0.75], linewidth=0.5)
     ax[2].set_title(L"q_{2} (\mathrm{color:} \, q^\mathrm{total}_{2}, \ \mathrm{lines:} \, q_{2}^{\prime})", fontsize=fsize)
 
-    cbpc2_ax = fig.add_axes([0.075,-1.05,0.215,0.03])
+    cbpc2_ax = fig.add_axes([0.075,-0.05,0.215,0.03])
     cbar_pc2 = fig.colorbar(pc2, ax=ax[2], location="top", pad=0.2, cax=cbpc2_ax)
 
     for axn in ax[1:4]
