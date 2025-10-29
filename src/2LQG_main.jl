@@ -149,6 +149,7 @@ function laplacian_operator_free_slip_y(Nx, Ny, dx, dy)
 
                     d2ψ_dx2 = (ψ[ip, j] - 2ψ[i, j] + ψ[im, j]) / dx2
                     d2ψ_dy2 = (ψ[i, jp] - 2ψ[i, j] + ψ[i, jm]) / dy2
+                    
                     lap[i, j] = d2ψ_dx2 + d2ψ_dy2
                 end
             end

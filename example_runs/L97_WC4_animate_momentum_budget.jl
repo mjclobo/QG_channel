@@ -48,8 +48,8 @@ U0 = 1.0  # Background shear (m/s)
 
 gprime = g * Δρ / ρ0
 
-F1 = 2 * f0^2 / (gprime * H1)
-F2 = 2 * f0^2 / (gprime * H2)
+F1 = f0^2 / (gprime * H1)
+F2 = f0^2 / (gprime * H2)
 
 Ld = sqrt((H1+H2) * gprime) / 2 / f0    # for beta=0.25 and U0=1, LSA says Ld \leq 2 will produce BCI (if U1 were constant, of course)
 
