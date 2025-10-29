@@ -14,6 +14,82 @@ function rk4(q1, q2, dt)
     return q1_new, q2_new
 end
 
+function rk4_prime(q1_prime, q2_prime, q1_bar, q2_bar, dt)
+    k1q1, k1q2 = rhs_prime(q1_prime, q2_prime, q1_bar, q2_bar)
+    k2q1, k2q2 = rhs_prime(q1_prime .+ 0.5dt .* k1q1, q2_prime .+ 0.5dt .* k1q2, q1_bar, q2_bar)
+    k3q1, k3q2 = rhs_prime(q1_prime .+ 0.5dt .* k2q1, q2_prime .+ 0.5dt .* k2q2, q1_bar, q2_bar)
+    k4q1, k4q2 = rhs_prime(q1_prime .+ dt .* k3q1, q2_prime .+ dt .* k3q2, q1_bar, q2_bar)
+
+    q1_new = q1_prime .+ dt/6 .* (k1q1 .+ 2k2q1 .+ 2k3q1 .+ k4q1)
+    q2_new = q2_prime .+ dt/6 .* (k1q2 .+ 2k2q2 .+ 2k3q2 .+ k4q2)
+    return q1_new, q2_new
+end
+
+function rk4_bar(q1_bar, q2_bar, q1_prime, q2_prime, dt)
+    k1q1, k1q2 = rhs_bar(q1_bar, q2_bar, q1_prime, q2_prime)
+    k2q1, k2q2 = rhs_bar(q1_bar .+ 0.5dt .* k1q1, q2_bar .+ 0.5dt .* k1q2, q1_prime, q2_prime)
+    k3q1, k3q2 = rhs_bar(q1_bar .+ 0.5dt .* k2q1, q2_bar .+ 0.5dt .* k2q2, q1_prime, q2_prime)
+    k4q1, k4q2 = rhs_bar(q1_bar .+ dt .* k3q1, q2_bar .+ dt .* k3q2, q1_prime, q2_prime)
+
+    q1_new = q1_bar .+ dt/6 .* (k1q1 .+ 2k2q1 .+ 2k3q1 .+ k4q1)
+    q2_new = q2_bar .+ dt/6 .* (k1q2 .+ 2k2q2 .+ 2k3q2 .+ k4q2)
+    return q1_new, q2_new
+end
+
+function rk4_coupled(q1_prime, q2_prime, q1_bar, q2_bar, dt)
+    """
+    Fully coupled RK4 step for (q_prime, q_bar) system.
+    
+    Parameters
+    ----------
+    q1_prime, q2_prime : arrays
+        Perturbation PV at current time.
+    q1_bar, q2_bar : arrays
+        Zonal-mean PV at current time.
+    dt : float
+        Timestep.
+    
+    Returns
+    -------
+    Updated (q1_prime, q2_prime, q1_bar, q2_bar) after one dt
+    """
+    
+    # Stage 1
+    k1p1, k1p2 = rhs_prime(q1_prime, q2_prime, q1_bar, q2_bar)
+    k1b1, k1b2 = rhs_bar(q1_bar, q2_bar, q1_prime, q2_prime)
+    
+    # Stage 2
+    q1p_temp = q1_prime + 0.5*dt*k1p1
+    q2p_temp = q2_prime + 0.5*dt*k1p2
+    q1b_temp = q1_bar   + 0.5*dt*k1b1
+    q2b_temp = q2_bar   + 0.5*dt*k1b2
+    k2p1, k2p2 = rhs_prime(q1p_temp, q2p_temp, q1b_temp, q2b_temp)
+    k2b1, k2b2 = rhs_bar(q1b_temp, q2b_temp, q1p_temp, q2p_temp)
+    
+    # Stage 3
+    q1p_temp = q1_prime + 0.5*dt*k2p1
+    q2p_temp = q2_prime + 0.5*dt*k2p2
+    q1b_temp = q1_bar   + 0.5*dt*k2b1
+    q2b_temp = q2_bar   + 0.5*dt*k2b2
+    k3p1, k3p2 = rhs_prime(q1p_temp, q2p_temp, q1b_temp, q2b_temp)
+    k3b1, k3b2 = rhs_bar(q1b_temp, q2b_temp, q1p_temp, q2p_temp)
+    
+    # Stage 4
+    q1p_temp = q1_prime + dt*k3p1
+    q2p_temp = q2_prime + dt*k3p2
+    q1b_temp = q1_bar   + dt*k3b1
+    q2b_temp = q2_bar   + dt*k3b2
+    k4p1, k4p2 = rhs_prime(q1p_temp, q2p_temp, q1b_temp, q2b_temp)
+    k4b1, k4b2 = rhs_bar(q1b_temp, q2b_temp, q1p_temp, q2p_temp)
+    
+    # Combine stages
+    q1_prime_new = q1_prime + dt/6 .* (k1p1 + 2*k2p1 + 2*k3p1 + k4p1)
+    q2_prime_new = q2_prime + dt/6 .* (k1p2 + 2*k2p2 + 2*k3p2 + k4p2)
+    q1_bar_new   = q1_bar   + dt/6 .* (k1b1 + 2*k2b1 + 2*k3b1 + k4b1)
+    q2_bar_new   = q2_bar   + dt/6 .* (k1b2 + 2*k2b2 + 2*k3b2 + k4b2)
+    
+    return q1_prime_new, q2_prime_new, q1_bar_new, q2_bar_new
+end
 
 ################################################################################
 # RK4 time stepper w/ integrating factor

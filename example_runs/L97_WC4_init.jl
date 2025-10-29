@@ -33,8 +33,10 @@ y = collect(0:dy:Ly-dy)
 # Model params
 ################################################################################
 
-f0 = 1.0 # 1e-4
 beta = 0.25 # 1.4e-11; beta promotes unstable edge waves
+
+# Do not change these vvv
+f0 = 1.0 # 1e-4
 g = 1 # 9.81
 H1 = 20.0 # 2000.0
 H2 = 20.0 # 2000.0
@@ -43,11 +45,10 @@ H2 = 20.0 # 2000.0
 
 U0 = 1.0  # Background shear (m/s)
 
-# Do not change these vvv
 gprime = g * Δρ / ρ0
 
-F1 = f0^2 / (gprime * H1)
-F2 = f0^2 / (gprime * H2)
+F1 = 2 * f0^2 / (gprime * H1)
+F2 = 2 * f0^2 / (gprime * H2)
 
 Ld = sqrt((H1+H2) * gprime) / 2 / f0    # for beta=0.25 and U0=1, LSA says Ld \leq 2 will produce BCI (if U1 were constant, of course)
 
@@ -79,7 +80,7 @@ WC = 4  # Width of boundary where background flow decays to zero (max of 0.5)
 
 ψ1_bg, U_bg = Lee1997_bg_jet(U0, WC)
 
-ψ1_bg = ψ1_bg .* ones(Nx, Ny)
+ψ1_bg = ψ1_bg' .* ones(Nx, Ny)
 ψ2_bg = zeros(Nx, Ny)
 
 ψ_diff_bg = ψ1_bg .- ψ2_bg
@@ -132,7 +133,6 @@ seed!(1234)
 
 q1 .+= 1e-2 * randn(Nx, Ny)
 q2 .+= 1e-2 * randn(Nx, Ny)
-
 
 t0 = 0    # initial timestamp (in seconds)
 

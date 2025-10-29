@@ -36,9 +36,9 @@ function save_streamfunction(dir, ψ1, ψ2, t, params)
 end
 
 
-function save_basic_anim_panel(fig_path, ell, q1, q2, U_bg)
+function save_basic_anim_panel(fig_path, ell, q1, q2, ψ1, ψ2, U_bg)
     plotname = "snapshots"
-    ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
+    # ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
 
     fig, ax = plt.subplots(2, 3, figsize=(14, 10), width_ratios=[1., 1., 0.4])
 
@@ -140,23 +140,23 @@ function save_growth_plot(fig_path, ell, q1, q2, U_bg, n, nt, KE1, KE2)
     end
     
     #################
-    fig, ax = plt.subplots(2, 4, figsize=(16, 10), width_ratios=[1., 1., 0.4, 0.4])
+    fig, ax = plt.subplots(2, 5, figsize=(20, 10), width_ratios=[1., 0.4, 1., 0.4, 0.4])
     fig.tight_layout(pad=4.0)
 
     fsize=16
 
     ax2lim = 3.0 # maximum(abs.(v1_init))
-    cf1 = ax[3].contourf(x, y, v1', cmap=PyPlot.cm.bwr, levels=[-1.75, -1.0, -0.25, -0.01, 0.01, 0.25, 1.0, 1.75], extend="both")  # levels=[-2.1, -1.6, -1.1, -0.6, -0.1, 0.1, 0.6, 1.1, 1.6, 2.1])  # collect(range(-2.25, 2.25, 10)))  # levels=[-1.5, -0.5, -0.1, 0.1, 0.5, 1.5])
-    ax[3].set_title(L"v_{1}^{\prime}", fontsize=fsize)
+    cf1 = ax[5].contourf(x, y, v1', cmap=PyPlot.cm.bwr, levels=[-1.75, -1.0, -0.25, -0.01, 0.01, 0.25, 1.0, 1.75], extend="both")  # levels=[-2.1, -1.6, -1.1, -0.6, -0.1, 0.1, 0.6, 1.1, 1.6, 2.1])  # collect(range(-2.25, 2.25, 10)))  # levels=[-1.5, -0.5, -0.1, 0.1, 0.5, 1.5])
+    ax[5].set_title(L"v_{1}^{\prime}", fontsize=fsize)
 
     cbcf1_ax = fig.add_axes([0.395,0.98,0.215,0.03])
-    cbar_cf1 = fig.colorbar(cf1, ax=ax[3], location="top", pad=0.2, cax = cbcf1_ax)
+    cbar_cf1 = fig.colorbar(cf1, ax=ax[5], location="top", pad=0.2, cax = cbcf1_ax)
     cbar_cf1.ax.yaxis.set_major_formatter(plt.FormatStrFormatter("%.2f"))
     cbar_cf1.ax.tick_params(labelsize=fsize, rotation=45)
 
     ax4lim = 1.1 # maximum(abs.(v2_init))
-    ax[4].contourf(x, y, v2', cmap=PyPlot.cm.bwr, levels=[-1.75, -1.0, -0.25, -0.01, 0.01, 0.25, 1.0, 1.75])  # levels=[-2.1, -1.6, -1.1, -0.6, -0.1, 0.1, 0.6, 1.1, 1.6, 2.1], extend="both")  # collect(range(-2.25, 2.25, 10)))  # levels=[-1.5, -0.5, -0.1, 0.1, 0.5, 1.25])
-    ax[4].set_title(L"v_{2}^{\prime}", fontsize=fsize)
+    ax[6].contourf(x, y, v2', cmap=PyPlot.cm.bwr, levels=[-1.75, -1.0, -0.25, -0.01, 0.01, 0.25, 1.0, 1.75])  # levels=[-2.1, -1.6, -1.1, -0.6, -0.1, 0.1, 0.6, 1.1, 1.6, 2.1], extend="both")  # collect(range(-2.25, 2.25, 10)))  # levels=[-1.5, -0.5, -0.1, 0.1, 0.5, 1.25])
+    ax[6].set_title(L"v_{2}^{\prime}", fontsize=fsize)
 
     ###############################################################################
     BCI_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["blue", "black", "green", "black", "red", "black", "yellow", "black", "blue"])    
@@ -192,7 +192,7 @@ function save_growth_plot(fig_path, ell, q1, q2, U_bg, n, nt, KE1, KE2)
     cbpc2_ax = fig.add_axes([0.075,-0.05,0.215,0.03])
     cbar_pc2 = fig.colorbar(pc2, ax=ax[2], location="top", pad=0.2, cax=cbpc2_ax)
 
-    for axn in ax[1:4]
+    for axn in [ax[1], ax[2], ax[5], ax[6]]
         axn.set_xlabel("x", fontsize=fsize)
         axn.set_ylabel("y", fontsize=fsize)
         axn.set_ylim(y_lower_lim, y_upper_lim)
@@ -201,20 +201,38 @@ function save_growth_plot(fig_path, ell, q1, q2, U_bg, n, nt, KE1, KE2)
     # ax[2].text(0.5, -0.3,L"\mathrm{color:} \, q^\mathrm{total}_{k}, \ \mathrm{lines:} \, q_{k}^{\prime}", ha="center", va="center", transform=ax[2].transAxes,fontsize=16.)
 
     ###
+
+
+    ax[3].plot(d_dy(mean(q1 .+ beta * y', dims=1), dy)', y, "k-", label=L"\mathrm{inst.}")
+    ax[4].plot(d_dy(mean(q2 .+ beta * y', dims=1), dy)', y, "k-", label=L"\mathrm{inst.}")
+
+    ax[3].plot(d_dy(mean(q1_bg_loc, dims=1), dy)', y, "r--", label=L"\mathrm{bckgrd}")
+    ax[4].plot(d_dy(mean(q2_bg_loc, dims=1), dy)', y, "r--", label=L"\mathrm{bckgrd.}")
+
+    ax[3].set_title(L"\partial_y \overline{q}_{1}", fontsize=fsize)
+    ax[4].set_title(L"\partial_y \overline{q}_{1}", fontsize=fsize)
+
+    for axn in ax[3:4]
+        axn.set_xlabel("x", fontsize=fsize)
+        axn.set_ylim(y_lower_lim, y_upper_lim)
+        axn.legend(loc="upper right", fontsize=fsize, bbox_to_anchor=[1.35, 1.025])
+    end
+
+    ###
     u1, v1 = u_from_psi(ψ1)
     u2, v2 = u_from_psi(ψ2)
 
-    ax[5].plot(U_bg', y, "r--", label=L"\mathrm{bckgrd.}")
-    ax[5].plot(mean(u1, dims=1)', y, "k-", label=L"\overline{u}_{1}")
-    ax[5].set_title(L"\mathrm{Layer \ 1 \ zonal \ flow}", fontsize=fsize)
-    ax[5].set_xlim(-0.5, 2.5)
+    ax[7].plot(U_bg', y, "r--", label=L"\mathrm{bckgrd.}")
+    ax[7].plot(mean(u1, dims=1)', y, "k-", label=L"\overline{u}_{1}")
+    ax[7].set_title(L"\mathrm{Layer \ 1 \ zonal \ flow}", fontsize=fsize)
+    ax[7].set_xlim(-0.5, 2.5)
 
-    ax[6].plot(zeros(size(U_bg)), y, "r--", label=L"\mathrm{bckgrd.}")
-    ax[6].plot(mean(u2, dims=1)', y, "k-", label=L"\overline{u}_{2}")
-    ax[6].set_title(L"\mathrm{Layer \ 2 \ zonal \ flow}", fontsize=fsize)
-    ax[6].set_xlim(-0.5, 2.5)
+    ax[8].plot(zeros(size(U_bg)), y, "r--", label=L"\mathrm{bckgrd.}")
+    ax[8].plot(mean(u2, dims=1)', y, "k-", label=L"\overline{u}_{2}")
+    ax[8].set_title(L"\mathrm{Layer \ 2 \ zonal \ flow}", fontsize=fsize)
+    ax[8].set_xlim(-0.5, 2.5)
 
-    for axn in ax[5:6]
+    for axn in ax[7:8]
         axn.set_xlabel("x", fontsize=fsize)
         axn.set_ylim(y_lower_lim, y_upper_lim)
         axn.legend(loc="upper right", fontsize=fsize, bbox_to_anchor=[1.35, 1.025])
@@ -226,17 +244,17 @@ function save_growth_plot(fig_path, ell, q1, q2, U_bg, n, nt, KE1, KE2)
     push!(KE2, mean((u2 .- mean(u2, dims=1)).^2 .+ (v2 .- mean(v2, dims=1)).^2))
 
     th = collect(range(dt, n*dt, ell+1))
-    ax[7].plot(th, KE1, "k-")
-    ax[7].set_title(L"\langle \mathrm{KE}_{1} \rangle", fontsize=fsize)
-    ax[7].set_yscale("log")
+    ax[9].plot(th, KE1, "k-")
+    ax[9].set_title(L"\langle \mathrm{KE}_{1} \rangle", fontsize=fsize)
+    ax[9].set_yscale("log")
     plt.grid()
 
-    ax[8].plot(th, KE2, "k-")
-    ax[8].set_title(L"\langle \mathrm{KE}_{2} \rangle", fontsize=fsize)
-    ax[8].set_yscale("log")
+    ax[10].plot(th, KE2, "k-")
+    ax[10].set_title(L"\langle \mathrm{KE}_{2} \rangle", fontsize=fsize)
+    ax[10].set_yscale("log")
     plt.grid()
 
-    for axn in [ax[7], ax[8]]
+    for axn in [ax[9], ax[10]]
         axn.set_xlim(dt, nt*dt)
         axn.set_xlabel("Time [nondim.]", fontsize=fsize)
         axn.set_ylim(1e-7, 0.5)

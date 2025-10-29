@@ -154,9 +154,12 @@ function laplacian_operator_free_slip_y(Nx, Ny, dx, dy)
             end
         end
 
-        # Enforce ∂y(∇²ψ)=0 at meridional walls (free-slip)
+        # # Enforce ∂y(∇²ψ)=0 at meridional walls (free-slip)
         lap[:, 1]  .= lap[:, 2]
         lap[:, Ny] .= lap[:, Ny-1]
+
+        # lap[:, 1]  .= 0.0
+        # lap[:, Ny] .= 0.0
 
         return lap
     end
@@ -256,6 +259,16 @@ function biharmonic(q; L=L2D) # q or psi
     return L(lap1)
 end
 
+function hyperviscous(ψ; L=L2D)
+    lap1 = L(ψ)          # ∇²ψ
+    lap2 = L(lap1)       # ∇⁴ψ
+
+    # Enforce ∂y(∇⁴ψ) = 0 at y = 0, Ly
+    lap2[:, 1]  .= lap2[:, 2]
+    lap2[:, end] .= lap2[:, end-1]
+
+    return L(lap2)  # ∇⁶ψ = L(∇⁴ψ)
+end
 
 
 ################################################################################
@@ -345,8 +358,11 @@ function rhs(q1, q2)
     # dq1dt .-= ν .* biharmonic(q1 .- q1_bg)
     # dq2dt .-= ν .* biharmonic(q2 .- q2_bg)
 
-    dq1dt .-= ν .* biharmonic(L2D(ψ1))
-    dq2dt .-= ν .* biharmonic(L2D(ψ2))
+    # dq1dt .-= ν .* biharmonic(L2D(ψ1))
+    # dq2dt .-= ν .* biharmonic(L2D(ψ2))
+
+    dq1dt .-= ν .* hyperviscous(ψ1)
+    dq2dt .-= ν .* hyperviscous(ψ2)
     
     dq2dt .-= r .* L2D(ψ2)
 
@@ -631,3 +647,5 @@ end
 #     ψ2[:, 2] .= 2ψ2_bg[2] - ψ2_bg[1]
 #     ψ2[:, end-1] .= 2ψ2_bg[end-1] - ψ2_bg[end]
 # end
+
+

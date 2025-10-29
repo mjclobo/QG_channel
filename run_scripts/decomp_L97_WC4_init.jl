@@ -18,8 +18,8 @@ using LoopVectorization
 # Geometry
 ################################################################################
 
-Nx = 128
-Ny = 128*2
+Nx = 64
+Ny = 64*2
 Lx = 50/2 
 Ly = 50 
 dx = Lx / Nx
@@ -80,8 +80,8 @@ WC = 4  # Width of boundary where background flow decays to zero (max of 0.5)
 
 ψ1_bg, U_bg = Lee1997_bg_jet(U0, WC)
 
-ψ1_bg = ψ1_bg' .* ones(Nx, Ny)
-ψ2_bg = zeros(Nx, Ny)
+# ψ1_bg = ψ1_bg
+ψ2_bg = zeros(size(ψ1_bg))
 
 ψ_diff_bg = ψ1_bg .- ψ2_bg
 
@@ -120,23 +120,23 @@ r = 0.05         # Ekman friction (1/s)  L97 uses 0.1
 # Set initial conditions
 ################################################################################
 
-ψ1 = deepcopy(ψ_diff_bg) # zeros(Nx, Ny) # 
-ψ2 = zeros(Nx, Ny)
+ψ1_bar = zeros(size(ψ1_bg)) # zeros(Nx, Ny) # 
+ψ2_bar = zeros(size(ψ2_bg))
 
-q1_bg, q2_bg = compute_qg_pv(ψ1_bg, ψ2_bg)
+q1_bar = zeros(size(ψ1_bg))
+q2_bar = zeros(size(ψ2_bg))
 
-q1, q2 = compute_qg_pv(ψ1, ψ2)
+q1_bg, q2_bg = compute_qg_pv_bar(ψ1_bg, ψ2_bg)
+# q1_bar, q2_bar = compute_qg_pv_bar(ψ1_bg, ψ2_bg)
 
 # seed!(2222)
 seed!(1234)
 
-q1 .+= 1e-2 * randn(Nx, Ny)
-q2 .+= 1e-2 * randn(Nx, Ny)
+# q1 .+= 1e-2 * randn(Nx, Ny)
+# q2 .+= 1e-2 * randn(Nx, Ny)
 
-
-# q1 = 1e-2 * randn(Nx, Ny)
-# q2 = 1e-2 * randn(Nx, Ny)
-
+q1_prime = 1e-2 * randn(Nx, Ny)    #  zeros((Nx, Ny))  #
+q2_prime = 1e-2 * randn(Nx, Ny)    # zeros((Nx, Ny))  # 
 
 t0 = 0    # initial timestamp (in seconds)
 
@@ -146,7 +146,7 @@ t0 = 0    # initial timestamp (in seconds)
 include("../define_vars.jl")
 params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, ν, r, α, U0, WC)
 
-run_model(q1, q2, t0, params)
+run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params)
 
 
 # now you can run L97_WC4_SS.jl to calculate steady-state turbulent statistics

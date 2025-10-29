@@ -77,7 +77,7 @@ function Lee1997_bg_jet(U0, WC; σ=4)
     # Numerically integrate to get ψ(y)
     ψ_bg = -cumtrapz(y, U)  # U = -dψ/dy ⇒ ψ = -∫ U dy
 
-    return ψ_bg', U
+    return ψ_bg, U
 end
 
 # function Lee1997_bg_jet(U0, y, Ly, WC)
@@ -213,8 +213,8 @@ function run_model(q1, q2, t0, params; timestepper="RK4", output_every=500)
                 elapsed_time = time() - start_time
 
                 # modified from GophysicalFlows.jl ex
-                log = @sprintf("step: %04d, t: %.1f, cfl: %.2f, KE1 avg.: %.3e, KE2 avg.: %.3e, walltime: %.2f min",
-                n, t0+n*dt, cfl, mean(u1.^2 .+ v1.^2), mean(u2.^2 .+ v2.^2), elapsed_time/60)
+                log = @sprintf("step: %04d, t: %.1f, cfl: %.2f, KE1 avg.: %.4e, KE2 avg.: %.4e, ens1: %.4e, ens2: %.4e, walltime: %.2f min",
+                n, t0+n*dt, cfl, mean(u1.^2 .+ v1.^2), mean(u2.^2 .+ v2.^2), sum(L2D(ψ1).^2), sum(L2D(ψ2).^2), elapsed_time/60)
 
                 println(log)
 
@@ -233,7 +233,9 @@ function run_model(q1, q2, t0, params; timestepper="RK4", output_every=500)
 
         if mod(n, plot_every) == 0          # plot whatever is in save_basic_anim_panel() function
             if plot_basic_bool==true
-                save_basic_anim_panel(fig_path, ell, q1, q2, U_bg)
+                ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
+
+                save_basic_anim_panel(fig_path, ell, q1, q2, ψ1, ψ2, U_bg)
             end
             if plot_BCI_bool==true
                 save_growth_plot(fig_path, ell, q1, q2, U_bg, n, nt, KE1, KE2)
@@ -247,6 +249,122 @@ function run_model(q1, q2, t0, params; timestepper="RK4", output_every=500)
         ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy)  # (q1, q2)
 
         save_streamfunction(save_path, ψ1, ψ2, t0+nt*dt, params)
+    end
+
+    # To turn the PyPlot GUI back on
+    PyPlot.pygui(true)
+end
+
+
+
+
+function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timestepper="RK4", output_every=500)
+    start_time = time()
+    # To turn off the PyPlot GUI
+    PyPlot.pygui(false)
+
+    # choose time stepping method; have to use anoNymous function bc "lexical scoping" of Julia...
+    # if timestepper=="RK4"
+    #     println("Using RK4 time stepper")
+    #     ts = q1, q2, dt -> rk4(q1, q2, dt)
+    # elseif timestepper=="RK4_int"
+    #     println("Using RK4 + integrating factor time stepper")
+    #     ts = q1, q2, dt -> rk4_integrating_factor(q1, q2, dt)
+    # else
+    #     error("You're asking for a timestepping method that doesn't exist.")
+    # end
+    # timestep(q1, q2, dt) = ts(q1, q2, dt)
+
+    # calculating y indices for prescribed meridional width of save domain
+    save_ind_start = floor(Int, Ny * y_width / 2)
+    save_ind_end   = floor(Int, Ny * (1 - y_width / 2))
+
+    # defining a couple of counters
+    cnt=1
+    ell=1
+
+    ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar, ψ1_bg[1])
+    ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
+
+    ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
+    u1_prime, v1_prime = u_from_psi(ψ1_prime)
+    u2_prime, v2_prime = u_from_psi(ψ2_prime)
+    
+    KE1 = [mean((u1_prime .- mean(u1_prime, dims=1)).^2 .+ (v1_prime .- mean(v1_prime, dims=1)).^2)]
+    KE2 = [mean((u2_prime .- mean(u2_prime, dims=1)).^2 .+ (v2_prime .- mean(v2_prime, dims=1)).^2)]
+
+    for n = 1:nt
+
+        q1_prime, q2_prime, q1_bar, q2_bar = rk4_coupled(q1_prime, q2_prime, q1_bar, q2_bar, dt)
+
+        if mod(n, output_every) == 0      # output a message
+            ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar, ψ1_bg[1])
+            ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
+        
+            ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
+
+            ψ1 = ψ1_bar' .+ ψ1_prime
+            ψ2 = ψ2_bar' .+ ψ2_prime
+        
+            if isnan(ψ1[2,2])
+                error("Psi is NaN")
+            else
+                u1, v1 = u_from_psi(ψ1)
+                u2, v2 = u_from_psi(ψ2)
+
+                cfl = dt * maximum([maximum([u1; u2]) / dx, maximum([v1; v2]) / dy])
+
+                elapsed_time = time() - start_time
+
+                # modified from GophysicalFlows.jl ex
+                log = @sprintf("step: %04d, t: %.1f, cfl: %.2f, KE1 avg.: %.4e, KE2 avg.: %.4e, ens1: %.4e, ens2: %.4e, walltime: %.2f min",
+                n, t0+n*dt, cfl, mean(u1.^2 .+ v1.^2), mean(u2.^2 .+ v2.^2), sum(L2D(ψ1).^2), sum(L2D(ψ2).^2), elapsed_time/60)
+
+                println(log)
+
+            end
+        end
+
+        if mod(n, save_every) == 0          # save streamfunction fields
+            if save_bool==true # && n >= start_saving*nt
+                ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar, ψ1_bg[1])
+                ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
+            
+                ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
+            
+                ψ1 = ψ1_bar' .+ ψ1_prime
+                ψ2 = ψ2_bar' .+ ψ2_prime
+
+                save_streamfunction(save_path, ψ1[:,save_ind_start:save_ind_end], ψ2[:,save_ind_start:save_ind_end], t0+n*dt, params)
+                cnt+=1
+
+            end
+        end
+
+        if mod(n, plot_every) == 0          # plot whatever is in save_basic_anim_panel() function
+            if plot_basic_bool==true
+                ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar, ψ1_bg[1])
+                ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
+            
+                ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
+            
+                save_basic_anim_panel(fig_path, ell, q1_bar' .+ q1_prime, q2_bar' .+ q2_prime, ψ1_bar' .+ ψ1_prime, ψ2_bar' .+ ψ2_prime, U_bg)
+            end
+            if plot_BCI_bool==true
+                save_growth_plot(fig_path, ell, q1_bar' .+ q1_prime, q2_bar' .+ q2_prime, U_bg, n, nt, KE1, KE2)
+            end
+            ell+=1
+        end
+
+    end
+
+    if save_last==true
+        ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar, ψ1_bg[1])
+        ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
+    
+        ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
+    
+        save_streamfunction(save_path, ψ1_bar' .+ ψ1_prime, ψ2_bar' .+ ψ2_prime, t0+nt*dt, params)
     end
 
     # To turn the PyPlot GUI back on
