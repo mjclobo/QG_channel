@@ -277,19 +277,8 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
     # To turn off the PyPlot GUI
     PyPlot.pygui(false)
 
-    # choose time stepping method; have to use anoNymous function bc "lexical scoping" of Julia...
-    # if timestepper=="RK4"
-    #     println("Using RK4 time stepper")
-    #     ts = q1, q2, dt -> rk4(q1, q2, dt)
-    # elseif timestepper=="RK4_int"
-    #     println("Using RK4 + integrating factor time stepper")
-    #     ts = q1, q2, dt -> rk4_integrating_factor(q1, q2, dt)
-    # else
-    #     error("You're asking for a timestepping method that doesn't exist.")
-    # end
-    # timestep(q1, q2, dt) = ts(q1, q2, dt)
-
     # calculating y indices for prescribed meridional width of save domain
+    y_width = 2*WC/Ly  # width of baroclinic zone
     save_ind_start = floor(Int, Ny * y_width / 2)
     save_ind_end   = floor(Int, Ny * (1 - y_width / 2))
 
@@ -297,10 +286,7 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
     cnt=1
     ell=1
 
-    # ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar, ψ1_bg[1])
-    # ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
     ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
-
 
     ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
     u1_prime, v1_prime = u_from_psi(ψ1_prime)
@@ -309,16 +295,22 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
     KE1 = [mean((u1_prime .- mean(u1_prime, dims=1)).^2 .+ (v1_prime .- mean(v1_prime, dims=1)).^2)]
     KE2 = [mean((u2_prime .- mean(u2_prime, dims=1)).^2 .+ (v2_prime .- mean(v2_prime, dims=1)).^2)]
 
+    if diag_bool==true
+        # initialize diag arrays; EKE, EAPE to start
+        n_diag = ceil(Int, nt/diag_every)
+
+        EKE_diag = zeros(2, n_diag)
+        EAPE_diag = zeros(n_diag)
+
+        diag_cnt = 1
+    end
+
     for n = 1:nt
 
         q1_prime, q2_prime, q1_bar, q2_bar = rk4_coupled(q1_prime, q2_prime, q1_bar, q2_bar, dt)
 
-        # filter_qprime!(q1_prime)
-        # filter_qprime!(q2_prime)
-
         if mod(n, output_every) == 0      # output a message
-            # ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar, ψ1_bg[1])
-            # ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
+
             ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
 
         
@@ -383,17 +375,42 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
             ell+=1
         end
 
+        # diagnostics
+        if mod(n, diag_every) == 0
+            ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
+            u1, v1 = u_from_psi(ψ1_prime)
+            u2, v2 = u_from_psi(ψ2_prime)
+
+            EKE_diag[1, diag_cnt] = 0.5 * mean(u1.^2 .+ v1.^2)
+            EKE_diag[2, diag_cnt] = 0.5 * mean(u2.^2 .+ v2.^2)
+
+            EAPE_diag[diag_cnt] = 0.5 * mean((ψ1_prime .- ψ2_prime).^2)   # no Ld^-2 factor bc non-dim (and Ld=1)
+
+            diag_cnt+=1
+
+        end
+
     end
 
     if save_last==true
         # ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar, ψ1_bg[1])
         # ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
         ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
-
     
         ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
     
         save_streamfunction(save_path, ψ1_bar' .+ ψ1_prime, ψ2_bar' .+ ψ2_prime, t0+nt*dt, params)
+    end
+
+    if diag_bool==true
+        t_diag = t0+nt*dt
+        file_name = "diags_t$t_diag.jld"
+        # Save variables to JLD file
+        time_array = collect(range(t0, t0+nt*dt; length=n_diag))
+        jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => EAPE_diag, "t" => time_array)
+        jldsave(diag_dir * file_name; jld_data)
+
+        println("Saved diagnostics to $file_name")
     end
 
     # To turn the PyPlot GUI back on
