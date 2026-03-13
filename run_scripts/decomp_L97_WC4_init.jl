@@ -79,7 +79,7 @@ else
     exclude_file="decomposed"
 end
 
-src_dir = "/home/matt/Desktop/research/QG/QG_channel/src/"
+src_dir = "/scratch/cimes/ml1994/QG/BC_zone_2LQG/QG_channel/src/"
 src_files = readdir(src_dir)
 for file in src_files
     if startswith(file, exclude_file)
@@ -88,8 +88,6 @@ for file in src_files
         include(src_dir*file)
     end
 end
-
-include("/home/matt/Desktop/research/QG/decomposed_2LQG_main.jl")
 
 ################################################################################
 # Define background flow profile
@@ -110,7 +108,7 @@ WC = 20  # Width of boundary where background flow decays to zero (max of 0.5)
 
 # this saves meridional bands (full zonal extent) of i) ψ1, ii) ψ2, and iii) t
 save_bool = true
-save_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/L97_WC4_init/"
+save_path = "/scratch/cimes/ml1994/QG/BC_zone_2LQG/QG_channel_output/data/WC_init/"
 y_width = 0.75  # meridional width of domain that is saved; max of 1 will save whole meridional extent of domain
 save_every = round(Int,nt/20)      # period of save frequency
 
@@ -123,7 +121,7 @@ save_last = true
 # this plots panels at fig_path; the plot function (defined in output_fcns.jl) can be modified to be whatever you want to see
 plot_basic_bool = true
 plot_BCI_bool = false
-fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/L97_WC4_BCI/"
+fig_path = "/scratch/cimes/ml1994/QG/BC_zone_2LQG/QG_channel_output/anim/WC_init/"
 plot_every = round(Int,nt/20)      # period of plot output frequency
 
 
@@ -162,7 +160,7 @@ t0 = 0    # initial timestamp (in seconds)
 ################################################################################
 # Run model from initial conditions
 ################################################################################
-include("../define_vars.jl")
+include(src_dir * "../define_vars.jl")
 params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, ν, r, α, U0, WC)
 
 run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params)
