@@ -397,7 +397,7 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
     end
 
     # To turn the PyPlot GUI back on
-    PyPlot.pygui(true)
+    # PyPlot.pygui(true)
 end
 
 

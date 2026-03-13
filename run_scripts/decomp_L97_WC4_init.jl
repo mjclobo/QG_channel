@@ -16,6 +16,8 @@ using LoopVectorization
 using Parameters
 using KernelAbstractions
 
+# FFTW LinearAlgebra Statistics Dates JLD2 PyPlot Printf Random SparseArrays LoopVectorization Parameters KernelAbstractions
+
 ################################################################################
 # Geometry
 ################################################################################
@@ -88,6 +90,9 @@ for file in src_files
         include(src_dir*file)
     end
 end
+
+
+# include("/home/matt/Desktop/research/QG/decomposed_2LQG_main.jl")
 
 ################################################################################
 # Define background flow profile
