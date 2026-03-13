@@ -378,13 +378,13 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
         # diagnostics
         if mod(n, diag_every) == 0
             ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
-            u1, v1 = u_from_psi(ψ1_prime)
-            u2, v2 = u_from_psi(ψ2_prime)
+            u1, v1 = u_from_psi(ψ1_prime[:,save_ind_start:save_ind_end])
+            u2, v2 = u_from_psi(ψ2_prime[:,save_ind_start:save_ind_end])
 
             EKE_diag[1, diag_cnt] = 0.5 * mean(u1.^2 .+ v1.^2)
             EKE_diag[2, diag_cnt] = 0.5 * mean(u2.^2 .+ v2.^2)
 
-            EAPE_diag[diag_cnt] = 0.5 * mean((ψ1_prime .- ψ2_prime).^2)   # no Ld^-2 factor bc non-dim (and Ld=1)
+            EAPE_diag[diag_cnt] = 0.5 * mean((ψ1_prime[:,save_ind_start:save_ind_end] .- ψ2_prime[:,save_ind_start:save_ind_end]).^2)   # no Ld^-2 factor bc non-dim (and Ld=1)
 
             diag_cnt+=1
 
