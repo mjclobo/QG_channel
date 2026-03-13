@@ -34,6 +34,14 @@ function make_spectral_params(params, dx, dy, cmax, ncbins)
     dω = 2π / (params.nt * params.dt)
     ωtemp = dω .* (0:(params.nt-1))
     ω_vec = [ m ≤ params.nt ÷ 2 ? ωtemp[m+1] : (ωtemp[m+1] - 2π/(params.dt)) for m in 0:(params.nt-1) ]
+    dk = 2π / (params.Nx * dx)
+    # Build signed k vector
+    ktemp = dk .* (0:(params.Nx-1))
+    k_vec = [ m ≤ params.Nx ÷ 2 ? ktemp[m+1] : (ktemp[m+1] - 2π/(dx)) for m in 0:(params.Nx-1) ]
+
+    dω = 2π / (params.nt * params.dt)
+    ωtemp = dω .* (0:(params.nt-1))
+    ω_vec = [ m ≤ params.nt ÷ 2 ? ωtemp[m+1] : (ωtemp[m+1] - 2π/(params.dt)) for m in 0:(params.nt-1) ]
 
     c_bin_edges = range(-cmax, stop=cmax, length=ncbins+1) |> collect
     c_bin_centers = (c_bin_edges[1:end-1] .+ c_bin_edges[2:end]) ./ 2
