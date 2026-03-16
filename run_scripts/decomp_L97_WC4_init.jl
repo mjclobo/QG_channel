@@ -22,7 +22,7 @@ using KernelAbstractions
 # Geometry
 ################################################################################
 
-Nx = 128
+Nx = 64
 Ny = Nx*2
 Nz = 2
 
@@ -98,7 +98,7 @@ end
 # Define background flow profile
 ################################################################################
 
-WC = 20  # Width of boundary where background flow decays to zero (max of 0.5)
+WC = 14  # Width of boundary where background flow decays to zero (max of 0.5)
 
 ψ1_bg, U_bg = Lee1997_bg_jet(U0, WC)
 
@@ -131,7 +131,7 @@ plot_every = round(Int,nt/20)      # period of plot output frequency
 # diagnostics
 diag_dir = "/home/matt/Desktop/research/QG/QG_channel_output/diagnostics/WC_init/"
 diag_bool = true
-diag_every = round(Int,nt/20)      # period of plot output frequency
+diag_every = round(Int,nt/30)      # period of plot output frequency
 
 ################################################################################
 # Damping (biharmonic viscosity, linear friction, and thermal damping)
