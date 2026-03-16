@@ -22,7 +22,7 @@ using KernelAbstractions
 # Geometry
 ################################################################################
 
-Nx = 64
+Nx = 128
 Ny = Nx*2
 Nz = 2
 
@@ -63,10 +63,10 @@ Ld = sqrt((H1+H2) * gprime) / 2 / f0    # for beta=0.25 and U0=1, LSA says Ld \l
 # Timestepping params
 ################################################################################
 
-cfl = 0.1      # nominal CFL
+cfl = 0.01      # nominal CFL
 
 dt = cfl * minimum([dx, dy]) / U0       # time step
-nt = 100                             # number of time steps
+nt = 30000                             # number of time steps
 
 timestep_method = "RK4" # "RK4_int"     # options are: RK4, RK4_int
 
@@ -136,10 +136,10 @@ diag_every = round(Int,nt/20)      # period of plot output frequency
 ################################################################################
 # Damping (biharmonic viscosity, linear friction, and thermal damping)
 ################################################################################
-ν = 6e-3 #  0.01 * dx^4 / dt # 1e6          # Hyperviscosity (m⁴/s)  L97 uses 6e-3
+ν = 1e-3 #  0.01 * dx^4 / dt # 1e6          # Hyperviscosity (m⁴/s)  L97 uses 6e-3
 
-r = 0.05         # Ekman friction (1/s)  L97 uses 0.1
-α = 30^-1        # Thermal damping (1/s)
+r = 0.1         # Ekman friction (1/s)  L97 uses 0.1
+α = 40^-1        # Thermal damping (1/s)
 
 ################################################################################
 # Set initial conditions

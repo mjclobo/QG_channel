@@ -302,6 +302,16 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
         EKE_diag = zeros(2, n_diag)
         EAPE_diag = zeros(n_diag)
 
+        v1ζ1 = zeros(Ny, n_diag)
+        v2ζ2 = zeros(Ny, n_diag)
+        v1τ = zeros(Ny, n_diag)
+        v2τ = zeros(Ny, n_diag)
+        q1Jbar = zeros(Ny, n_diag)
+        q2Jbar = zeros(Ny, n_diag)
+        q1τ = zeros(Ny, n_diag)
+        q2τ = zeros(Ny, n_diag)
+        rq2ζ2 = zeros(Ny, n_diag)
+
         diag_cnt = 1
     end
 
@@ -376,7 +386,7 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
         end
 
         # diagnostics
-        if mod(n, diag_every) == 0
+        if mod(n, diag_every) == 0 && diag_bool == true
             ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
             u1, v1 = u_from_psi(ψ1_prime[:,save_ind_start:save_ind_end])
             u2, v2 = u_from_psi(ψ2_prime[:,save_ind_start:save_ind_end])
@@ -385,6 +395,10 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
             EKE_diag[2, diag_cnt] = 0.5 * mean(u2.^2 .+ v2.^2)
 
             EAPE_diag[diag_cnt] = 0.5 * mean((ψ1_prime[:,save_ind_start:save_ind_end] .- ψ2_prime[:,save_ind_start:save_ind_end]).^2)   # no Ld^-2 factor bc non-dim (and Ld=1)
+
+            # v1ζ1[:, diag_cnt], v2ζ2[:, diag_cnt], v1τ[:, diag_cnt], v2τ[:, diag_cnt], q1Jbar[:, diag_cnt], q2Jbar[:, diag_cnt], q1τ[:, diag_cnt], q2τ[:, diag_cnt], rq2ζ2[:, diag_cnt] = pseudomomentum_budget(q1_bar, q2_bar, q1_prime, q2_prime)
+
+            @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1[:, diag_cnt], v2ζ2[:, diag_cnt], v1τ[:, diag_cnt], v2τ[:, diag_cnt], q1Jbar[:, diag_cnt], q2Jbar[:, diag_cnt], q1τ[:, diag_cnt], q2τ[:, diag_cnt], rq2ζ2[:, diag_cnt])
 
             diag_cnt+=1
 
@@ -404,10 +418,13 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
 
     if diag_bool==true
         t_diag = t0+nt*dt
-        file_name = "diags_t$t_diag.jld"
+        file_name = struct_to_string(params) * "_diags_t$t_diag.jld"
         # Save variables to JLD file
         time_array = collect(range(t0, t0+nt*dt; length=n_diag))
-        jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => EAPE_diag, "t" => time_array)
+        jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => EAPE_diag, "t" => time_array,
+        "v1ζ1" => v1ζ1, "v2ζ2" => v2ζ2, "v1τ" => v1τ, "v2τ" => v2τ,
+        "q1Jbar" => q1Jbar, "q2Jbar" => q2Jbar, "q1τ" => q1τ, "q2τ" => q2τ,
+        "rq2ζ2" => rq2ζ2)
         jldsave(diag_dir * file_name; jld_data)
 
         println("Saved diagnostics to $file_name")

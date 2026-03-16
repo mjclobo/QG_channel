@@ -65,7 +65,7 @@ Ld = sqrt((H1+H2) * gprime) / 2 / f0    # for beta=0.25 and U0=1, LSA says Ld \l
 cfl = 0.05      # nominal CFL
 
 dt = cfl * minimum([dx, dy]) / U0       # time step
-nt = 2000                             # number of time steps
+nt = 200                             # number of time steps
 
 timestep_method = "RK4" # "RK4_int"     # options are: RK4, RK4_int
 
