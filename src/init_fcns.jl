@@ -308,6 +308,8 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
         v2τ = zeros(Ny) # , n_diag)
         q1Jbar = zeros(Ny) # , n_diag)
         q2Jbar = zeros(Ny) # , n_diag)
+        dy_v_qpsq1 = zeros(Ny)
+        dy_v_qpsq2 = zeros(Ny)
         q1τ = zeros(Ny) # , n_diag)
         q2τ = zeros(Ny) # , n_diag)
         rq2ζ2 = zeros(Ny) # , n_diag)
@@ -401,14 +403,14 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
 
             # @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1[:, diag_cnt], v2ζ2[:, diag_cnt], v1τ[:, diag_cnt], v2τ[:, diag_cnt], q1Jbar[:, diag_cnt], q2Jbar[:, diag_cnt], q1τ[:, diag_cnt], q2τ[:, diag_cnt], rq2ζ2[:, diag_cnt])
 
-            if t0 + n * dt > 250
-                @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, q1τ, q2τ, rq2ζ2)
-
-                diag_cntr +=1
-            end
-
             diag_cnt+=1
 
+        end
+
+        if t0 + n * dt > 250 && mod(n, 10)==0
+            @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, dy_v_qpsq1, dy_v_qpsq2, q1τ, q2τ, rq2ζ2)
+
+            diag_cntr +=1
         end
 
     end
@@ -433,9 +435,10 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
         # "q1Jbar" => q1Jbar, "q2Jbar" => q2Jbar, "q1τ" => q1τ, "q2τ" => q2τ,
         # "rq2ζ2" => rq2ζ2)
         jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => Array(EAPE_diag), "t" => time_array,
-        "v1ζ1" => v1ζ1./diag_cntr, "v2ζ2" => v2ζ2./diag_cntr, "v1τ" => v1τ./diag_cntr, "v2τ" => v2τ./diag_cntr,
+        "v1ζ1" => v1ζ1./diag_cntr, "v2ζ2" => v2ζ2./diag_cntr, "dy_v_qpsq1" => dy_v_qpsq1 ./diag_cntr,
+        "dy_v_qpsq2" => dy_v_qpsq2 ./diag_cntr, "v1τ" => v1τ./diag_cntr, "v2τ" => v2τ./diag_cntr,
         "q1Jbar" => q1Jbar./diag_cntr, "q2Jbar" => q2Jbar./diag_cntr, "q1τ" => q1τ./diag_cntr, "q2τ" => q2τ./diag_cntr,
-        "rq2ζ2" => rq2ζ2./diag_cntr)
+        "rq2ζ2" => rq2ζ2./diag_cntr, "diag_cntr" => diag_cntr)
 
         jldsave(diag_dir * file_name; jld_data)
 

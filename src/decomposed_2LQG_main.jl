@@ -458,7 +458,56 @@ function u_from_psi(ψ)
 end
 
 
-function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, q1τ, q2τ, rq2ζ2)
+# function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, q1τ, q2τ, rq2ζ2)
+
+#     ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
+#     ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
+
+#     γ1 = d_dy(reshape(q1_bar, (1, Ny)), dy) .+ beta
+#     γ2 = d_dy(reshape(q2_bar, (1, Ny)), dy) .+ beta
+
+#     ψ1 = ψ1_bar' .+ ψ1_prime
+#     ψ2 = ψ2_bar' .+ ψ2_prime
+
+#     q1 = q1_bar' .+ q1_prime
+#     q2 = q2_bar' .+ q2_prime
+
+#     u1, v1 = u_from_psi(ψ1)
+#     u2, v2 = u_from_psi(ψ2)
+
+#     ## -v_i zeta_i
+
+#     v1ζ1 .= vec(mean(v1 .* L2D(ψ1), dims=1))
+#     v2ζ2 .= vec(mean(v2 .* L2D(ψ2), dims=1))
+
+#     ## v_i (pis1 - psi2) / 2
+
+#     v1τ .= 0.5 * vec(mean(v1 .* (ψ1 .- ψ2), dims=1))
+#     v2τ .= 0.5 * vec(mean(v2 .* (ψ1 .- ψ2), dims=1))
+
+#     ## q_i J ( psi_i, q_i)  [this is full psi_i]
+
+#     # J1_bar = mean(arakawa_jacobian(ψ1_prime, q1_prime, dx, dy), dims=1) # zeros(Nx, Ny)  # 
+#     # J2_bar = mean(arakawa_jacobian(ψ2_prime, q2_prime, dx, dy), dims=1) # zeros(Nx, Ny)  # 
+
+#     J1_tot = arakawa_jacobian(ψ1, q1, dx, dy) # zeros(Nx, Ny)  # 
+#     J2_tot = arakawa_jacobian(ψ2, q2, dx, dy) # zeros(Nx, Ny)  # 
+
+#     q1Jbar .= vec(mean(q1 .* J1_tot, dims=1) ./ γ1)
+#     q2Jbar .= vec(mean(q2 .* J2_tot, dims=1) ./ γ2)
+
+#     ## r_T q_i tau / gamma_i
+#     q1τ .=  vec(mean(α * F1 .* q1 .* (ψ1 .- ψ2), dims=1) ./ γ1)
+#     q2τ .= vec(mean(α * F1 .* q2 .* (ψ1 .- ψ2), dims=1) ./ γ2)
+
+#     ## -r_B q2 zeta2 / gamma_2   [lower layer only]
+#     rq2ζ2 .= vec(mean(r .* q2 .* L2D(ψ2), dims=1) ./ γ2)
+
+#     return nothing
+# end
+
+
+function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, dy_v_qpsq1, dy_v_qpsq2, q1τ, q2τ, rq2ζ2)
 
     ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
     ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
@@ -469,39 +518,36 @@ function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2
     ψ1 = ψ1_bar' .+ ψ1_prime
     ψ2 = ψ2_bar' .+ ψ2_prime
 
-    q1 = q1_bar' .+ q1_prime
-    q2 = q2_bar' .+ q2_prime
-
-    u1, v1 = u_from_psi(ψ1)
-    u2, v2 = u_from_psi(ψ2)
+    u1, v1 = u_from_psi(ψ1_prime)
+    u2, v2 = u_from_psi(ψ2_prime)
 
     ## -v_i zeta_i
-
-    v1ζ1 .= vec(mean(v1 .* L2D(ψ1), dims=1))
-    v2ζ2 .= vec(mean(v2 .* L2D(ψ2), dims=1))
+    v1ζ1 .= vec(mean(v1 .* L2D(ψ1_prime), dims=1))
+    v2ζ2 .= vec(mean(v2 .* L2D(ψ2_prime), dims=1))
 
     ## v_i (pis1 - psi2) / 2
+    v1τ .= 0.5 * vec(mean(v1 .* (ψ1_prime .- ψ2_prime), dims=1))
+    v2τ .= 0.5 * vec(mean(v2 .* (ψ1_prime .- ψ2_prime), dims=1))
 
-    v1τ .= 0.5 * vec(mean(v1 .* (ψ1 .- ψ2), dims=1))
-    v2τ .= 0.5 * vec(mean(v2 .* (ψ1 .- ψ2), dims=1))
+    ## q_i J
+    J1_tot = arakawa_jacobian(ψ1, q1_prime, dx, dy) # zeros(Nx, Ny)  # 
+    J2_tot = arakawa_jacobian(ψ2, q2_prime, dx, dy) # zeros(Nx, Ny)  # 
 
-    ## q_i J ( psi_i, q_i)  [this is full psi_i]
+    q1Jbar .= vec(mean(q1_prime .* J1_tot, dims=1) ./ γ1)   # this is equivalent to -\partial_{y} \overbar[v (q')^2 / (2 \gamma)]
+    q2Jbar .= vec(mean(q2_prime .* J2_tot, dims=1) ./ γ2)
 
-    # J1_bar = mean(arakawa_jacobian(ψ1_prime, q1_prime, dx, dy), dims=1) # zeros(Nx, Ny)  # 
-    # J2_bar = mean(arakawa_jacobian(ψ2_prime, q2_prime, dx, dy), dims=1) # zeros(Nx, Ny)  # 
-
-    J1_tot = arakawa_jacobian(ψ1, q1, dx, dy) # zeros(Nx, Ny)  # 
-    J2_tot = arakawa_jacobian(ψ2, q2, dx, dy) # zeros(Nx, Ny)  # 
-
-    q1Jbar .= vec(mean(q1 .* J1_tot, dims=1) ./ γ1)
-    q2Jbar .= vec(mean(q2 .* J2_tot, dims=1) ./ γ2)
+    ## flux form of Jacobian terms (combines them all)
+    dy_v_qpsq1 .= vec(d_dy(mean(v1 .* (q1_prime.^2), dims=1) , dy)  ./ (2 .* γ1))
+    dy_v_qpsq2 .= vec(d_dy(mean(v2 .* (q2_prime.^2), dims=1) , dy)  ./ (2 .* γ2))
 
     ## r_T q_i tau / gamma_i
-    q1τ .=  vec(mean(α * F1 .* q1 .* (ψ1 .- ψ2), dims=1) ./ γ1)
-    q2τ .= vec(mean(α * F1 .* q2 .* (ψ1 .- ψ2), dims=1) ./ γ2)
+    q1τ .=  vec(mean(α * F1 .* q1_prime .* (ψ1_prime .- ψ2_prime), dims=1) ./ γ1)
+    q2τ .= vec(mean(α * F1 .* q2_prime .* (ψ1_prime .- ψ2_prime), dims=1) ./ γ2)
 
     ## -r_B q2 zeta2 / gamma_2   [lower layer only]
-    rq2ζ2 .= vec(mean(r .* q2 .* L2D(ψ2), dims=1) ./ γ2)
+    rq2ζ2 .= vec(mean(r .* q2_prime .* L2D(ψ2_prime), dims=1) ./ γ2)
 
     return nothing
 end
+
+
