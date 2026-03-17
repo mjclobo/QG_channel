@@ -497,8 +497,8 @@ function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2
     q2Jbar .= vec(mean(q2 .* J2_tot, dims=1) ./ γ2)
 
     ## r_T q_i tau / gamma_i
-    q1τ .=  vec(γ1)  # vec(mean(α * F1 .* q1 .* (ψ1 .- ψ2), dims=1) ./ γ1)
-    q2τ .= vec(γ2)  # vec(mean(α * F1 .* q2 .* (ψ1 .- ψ2), dims=1) ./ γ2)
+    q1τ .=  vec(mean(α * F1 .* q1 .* (ψ1 .- ψ2), dims=1) ./ γ1)
+    q2τ .= vec(mean(α * F1 .* q2 .* (ψ1 .- ψ2), dims=1) ./ γ2)
 
     ## -r_B q2 zeta2 / gamma_2   [lower layer only]
     rq2ζ2 .= vec(mean(r .* q2 .* L2D(ψ2), dims=1) ./ γ2)

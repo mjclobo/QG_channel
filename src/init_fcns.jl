@@ -302,17 +302,18 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
         EKE_diag = zeros(2, n_diag)
         EAPE_diag = zeros(n_diag)
 
-        v1ζ1 = zeros(Ny, n_diag)
-        v2ζ2 = zeros(Ny, n_diag)
-        v1τ = zeros(Ny, n_diag)
-        v2τ = zeros(Ny, n_diag)
-        q1Jbar = zeros(Ny, n_diag)
-        q2Jbar = zeros(Ny, n_diag)
-        q1τ = zeros(Ny, n_diag)
-        q2τ = zeros(Ny, n_diag)
-        rq2ζ2 = zeros(Ny, n_diag)
+        v1ζ1 = zeros(Ny) # , n_diag)
+        v2ζ2 = zeros(Ny) # , n_diag)
+        v1τ = zeros(Ny) # , n_diag)
+        v2τ = zeros(Ny) # , n_diag)
+        q1Jbar = zeros(Ny) # , n_diag)
+        q2Jbar = zeros(Ny) # , n_diag)
+        q1τ = zeros(Ny) # , n_diag)
+        q2τ = zeros(Ny) # , n_diag)
+        rq2ζ2 = zeros(Ny) # , n_diag)
 
         diag_cnt = 1
+        diag_cntr = 0
     end
 
     for n = 1:nt
@@ -398,7 +399,13 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
 
             # v1ζ1[:, diag_cnt], v2ζ2[:, diag_cnt], v1τ[:, diag_cnt], v2τ[:, diag_cnt], q1Jbar[:, diag_cnt], q2Jbar[:, diag_cnt], q1τ[:, diag_cnt], q2τ[:, diag_cnt], rq2ζ2[:, diag_cnt] = pseudomomentum_budget(q1_bar, q2_bar, q1_prime, q2_prime)
 
-            @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1[:, diag_cnt], v2ζ2[:, diag_cnt], v1τ[:, diag_cnt], v2τ[:, diag_cnt], q1Jbar[:, diag_cnt], q2Jbar[:, diag_cnt], q1τ[:, diag_cnt], q2τ[:, diag_cnt], rq2ζ2[:, diag_cnt])
+            # @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1[:, diag_cnt], v2ζ2[:, diag_cnt], v1τ[:, diag_cnt], v2τ[:, diag_cnt], q1Jbar[:, diag_cnt], q2Jbar[:, diag_cnt], q1τ[:, diag_cnt], q2τ[:, diag_cnt], rq2ζ2[:, diag_cnt])
+
+            if t0 + n * dt > 250
+                @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, q1τ, q2τ, rq2ζ2)
+
+                diag_cntr +=1
+            end
 
             diag_cnt+=1
 
@@ -421,10 +428,15 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
         file_name = struct_to_string(params) * "_diags_t$t_diag.jld"
         # Save variables to JLD file
         time_array = collect(range(t0, t0+nt*dt; length=n_diag))
-        jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => EAPE_diag, "t" => time_array,
-        "v1ζ1" => v1ζ1, "v2ζ2" => v2ζ2, "v1τ" => v1τ, "v2τ" => v2τ,
-        "q1Jbar" => q1Jbar, "q2Jbar" => q2Jbar, "q1τ" => q1τ, "q2τ" => q2τ,
-        "rq2ζ2" => rq2ζ2)
+        # jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => EAPE_diag, "t" => time_array,
+        # "v1ζ1" => v1ζ1, "v2ζ2" => v2ζ2, "v1τ" => v1τ, "v2τ" => v2τ,
+        # "q1Jbar" => q1Jbar, "q2Jbar" => q2Jbar, "q1τ" => q1τ, "q2τ" => q2τ,
+        # "rq2ζ2" => rq2ζ2)
+        jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => Array(EAPE_diag), "t" => time_array,
+        "v1ζ1" => v1ζ1./diag_cntr, "v2ζ2" => v2ζ2./diag_cntr, "v1τ" => v1τ./diag_cntr, "v2τ" => v2τ./diag_cntr,
+        "q1Jbar" => q1Jbar./diag_cntr, "q2Jbar" => q2Jbar./diag_cntr, "q1τ" => q1τ./diag_cntr, "q2τ" => q2τ./diag_cntr,
+        "rq2ζ2" => rq2ζ2./diag_cntr)
+
         jldsave(diag_dir * file_name; jld_data)
 
         println("Saved diagnostics to $file_name")
