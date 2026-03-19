@@ -64,7 +64,7 @@ function cumtrapz(X::T, Y::T) where {T <: AbstractVector}
     return out
 end
 
-function Lee1997_bg_jet(U0, WC; σ=4)
+function Lee1997_bg_jet(U0, WC; σ=6.0)
     dy = y[2] - y[1]
 
     WS = (1 - 2*WC/Ly)/2    # width of a ``side'', i.e., the distance in the y direction over which background flow decays from U0 to zero; normalized from 0 to 1
@@ -74,24 +74,35 @@ function Lee1997_bg_jet(U0, WC; σ=4)
 
     # First build U profile
     U = zeros(length(y))
-    y_cent = y .+ dy/2
+    y_cent = y .+ dy/2 .- Ly/2
 
-    upper_jet_bound = ceil(Int, WS * length(y))
-    lower_jet_bound = ceil(Int, (1 - WS) * length(y))
+    upper_jet_bound = ceil(Int, WS * length(y))+1
+    lower_jet_bound = ceil(Int, (1 - WS) * length(y))-1
 
-    # North of jet
-    U[1:upper_jet_bound] .= @. U0 * exp(-((y_cent[1:upper_jet_bound] - y_cent[upper_jet_bound])^2) / σ^2) * half_Hann_window(y[1:upper_jet_bound+floor(Int, 2*WC/Ly)], WS * Ly)
+    # # North of jet
+    # U[1:upper_jet_bound] .= @. U0 * exp(-((y_cent[1:upper_jet_bound] - y_cent[upper_jet_bound])^2) / σ^2) * half_Hann_window(y[1:upper_jet_bound+floor(Int, 2*WC/Ly)], WS * Ly)
 
-    # Middle (flat jet)
-    U[upper_jet_bound+1:lower_jet_bound-1] .= U0
+    # # Middle (flat jet)
+    # U[upper_jet_bound+1:lower_jet_bound-1] .= U0
 
-    # South of jet
-    U[lower_jet_bound:end] .= reverse(U[1:upper_jet_bound])
+    # # South of jet
+    # U[lower_jet_bound:end] .= reverse(U[1:upper_jet_bound])
+
+    for (i, yi) in enumerate(y_cent)
+        if abs(yi) < WC
+            U[i] = U0
+        else
+            U[i] = U0 * exp(-(abs(yi) - WC)^2 * σ^-2)
+        end
+    end
+
+    # this is also a good option!
+    # U .= U0 .* 0.5 .* (1 .- tanh.(5 .* (abs.(y_cent) .- WC) ./ s))
 
     # Numerically integrate to get ψ(y)
     ψ_bg = -cumtrapz(y, U)  # U = -dψ/dy ⇒ ψ = -∫ U dy
 
-    return ψ_bg, U
+    return ψ_bg, U, upper_jet_bound+1, lower_jet_bound-1
 end
 
 # function Lee1997_bg_jet(U0, y, Ly, WC)
@@ -272,15 +283,15 @@ end
 
 
 
-function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timestepper="RK4", output_every=500)
+function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timestepper="RK4", output_every=500, save_ind_start=1, save_ind_end=Ny)
     start_time = time()
     # To turn off the PyPlot GUI
     PyPlot.pygui(false)
 
     # calculating y indices for prescribed meridional width of save domain
-    y_width = 2*WC/Ly  # width of baroclinic zone
-    save_ind_start = floor(Int, Ny * y_width / 2)
-    save_ind_end   = floor(Int, Ny * (1 - y_width / 2))
+    # y_width = 2*WC/Ly  # width of baroclinic zone
+    # save_ind_start = floor(Int, Ny * y_width / 2)
+    # save_ind_end   = floor(Int, Ny * (1 - y_width / 2))
 
     # defining a couple of counters
     cnt=1

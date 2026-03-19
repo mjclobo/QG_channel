@@ -537,8 +537,8 @@ function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2
     q2Jbar .= vec(mean(q2_prime .* J2_tot, dims=1) ./ γ2)
 
     ## flux form of Jacobian terms (combines them all)
-    dy_v_qpsq1 .= vec(d_dy(mean(v1 .* (q1_prime.^2), dims=1) , dy)  ./ (2 .* γ1))
-    dy_v_qpsq2 .= vec(d_dy(mean(v2 .* (q2_prime.^2), dims=1) , dy)  ./ (2 .* γ2))
+    dy_v_qpsq1 .= vec(mean(q1_prime .* J1_tot, dims=1))  # vec(d_dy(mean(v1 .* (q1_prime.^2), dims=1) , dy)  ./ (2 .* γ1))
+    dy_v_qpsq2 .= vec(mean(q2_prime .* J2_tot, dims=1))  # vec(d_dy(mean(v2 .* (q2_prime.^2), dims=1) , dy)  ./ (2 .* γ2))
 
     ## r_T q_i tau / gamma_i
     q1τ .=  vec(mean(α * F1 .* q1_prime .* (ψ1_prime .- ψ2_prime), dims=1) ./ γ1)

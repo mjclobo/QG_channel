@@ -98,9 +98,9 @@ end
 # Define background flow profile
 ################################################################################
 
-WC = 14  # Width of boundary where background flow decays to zero (max of 0.5)
+WC = 8  # Width of boundary where background flow decays to zero (max of 0.5)
 
-ψ1_bg, U_bg = Lee1997_bg_jet(U0, WC)
+ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC)
 
 # ψ1_bg = ψ1_bg
 ψ2_bg = zeros(size(ψ1_bg))
@@ -171,7 +171,7 @@ t0 = 0    # initial timestamp (in seconds)
 include(src_dir * "../define_vars.jl")
 params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, ν, r, α, U0, WC)
 
-run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params)
+# run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind)
 
 
 # now you can run L97_WC4_SS.jl to calculate steady-state turbulent statistics
