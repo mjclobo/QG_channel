@@ -23,10 +23,10 @@ using KernelAbstractions
 ################################################################################
 
 Nx = 64
-Ny = Nx*2
+Ny = 160
 Nz = 2
 
-Lx = 90/2
+Lx = 36
 Ly = 90 
 dx = Lx / Nx
 dy = Ly / Ny
@@ -66,7 +66,9 @@ Ld = sqrt((H1+H2) * gprime) / 2 / f0    # for beta=0.25 and U0=1, LSA says Ld \l
 cfl = 0.01      # nominal CFL
 
 dt = cfl * minimum([dx, dy]) / U0       # time step
-nt = 300                             # number of time steps
+ndays = 300
+
+nt = round(Int, ndays/dt)                             # number of time steps
 
 timestep_method = "RK4" # "RK4_int"     # options are: RK4, RK4_int
 
@@ -98,7 +100,7 @@ end
 # Define background flow profile
 ################################################################################
 
-WC = 8  # Width of boundary where background flow decays to zero (max of 0.5)
+WC = 14  # Width of boundary where background flow decays to zero (max of 0.5)
 
 ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC)
 
@@ -125,7 +127,7 @@ save_last = true
 # this plots panels at fig_path; the plot function (defined in output_fcns.jl) can be modified to be whatever you want to see
 plot_basic_bool = true
 plot_BCI_bool = false
-fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/WC_init/"
+fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/WC_init" * string(beta) * string(WC) * "/"
 plot_every = round(Int,nt/20)      # period of plot output frequency
 
 # diagnostics
@@ -171,7 +173,7 @@ t0 = 0    # initial timestamp (in seconds)
 include(src_dir * "../define_vars.jl")
 params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, ν, r, α, U0, WC)
 
-# run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind)
+run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind)
 
 
 # now you can run L97_WC4_SS.jl to calculate steady-state turbulent statistics
