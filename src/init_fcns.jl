@@ -419,6 +419,7 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
         end
 
         if t0 + n * dt > 250 && mod(n, 10)==0
+
             @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, dy_v_qpsq1, dy_v_qpsq2, q1τ, q2τ, rq2ζ2)
 
             diag_cntr +=1
