@@ -515,8 +515,8 @@ function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2
     γ1 = d_dy(reshape(q1_bar, (1, Ny)), dy) .+ beta
     γ2 = d_dy(reshape(q2_bar, (1, Ny)), dy) .+ beta
 
-    γ1_accum .+= γ1
-    γ2_accum .+= γ2
+    γ1_accum .+= γ1[:]
+    γ2_accum .+= γ2[:]
 
     ψ1 = ψ1_bar' .+ ψ1_prime
     ψ2 = ψ2_bar' .+ ψ2_prime
