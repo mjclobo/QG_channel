@@ -132,7 +132,8 @@ plot_every = round(Int,nt/20)      # period of plot output frequency
 
 # diagnostics
 diag_dir = "/home/matt/Desktop/research/QG/QG_channel_output/diagnostics/WC_init/"
-diag_bool = true
+diag_bool = false
+nrg_diag_bool = true
 diag_every = round(Int,nt/30)      # period of plot output frequency
 
 ################################################################################

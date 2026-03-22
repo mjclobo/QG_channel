@@ -331,6 +331,16 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
         diag_cntr = 0
     end
 
+    if nrg_diag_bool==true
+        # initialize diag arrays; EKE, EAPE to start
+        n_diag = ceil(Int, nt/diag_every)
+
+        EKE_diag = zeros(2, n_diag)
+        EAPE_diag = zeros(n_diag)
+
+        diag_cnt = 1
+    end
+
     for n = 1:nt
 
         q1_prime, q2_prime, q1_bar, q2_bar = rk4_coupled(q1_prime, q2_prime, q1_bar, q2_bar, dt)
@@ -402,7 +412,7 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
         end
 
         # diagnostics
-        if mod(n, diag_every) == 0 && diag_bool == true
+        if mod(n, diag_every) == 0 && nrg_diag_bool == true
             ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
             u1, v1 = u_from_psi(ψ1_prime[:,save_ind_start:save_ind_end])
             u2, v2 = u_from_psi(ψ2_prime[:,save_ind_start:save_ind_end])
@@ -420,7 +430,7 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
 
         end
 
-        if t0 + n * dt > 250 && mod(n, 10)==0
+        if t0 + n * dt > 250 && mod(n, 10)==0 && diag_bool==true
 
             @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, dy_v_qpsq1, dy_v_qpsq2, q1τ, q2τ, rq2ζ2, γ1_accum, γ2_accum)
 
@@ -456,7 +466,19 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timest
 
         jldsave(diag_dir * file_name; jld_data)
 
-        println("Saved diagnostics to $file_name")
+        println("Saved all diagnostics to $file_name")
+
+    elseif nrg_diag_bool==true
+        t_diag = t0+nt*dt
+        file_name = struct_to_string(params) * "_nrg_diags_t$t_diag.jld"
+        # Save variables to JLD file
+        time_array = collect(range(t0, t0+nt*dt; length=n_diag))
+
+        jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => Array(EAPE_diag), "t" => time_array)
+
+        jldsave(diag_dir * file_name; jld_data)
+
+        println("Saved energy diagnostics to $file_name")
     end
 
     # To turn the PyPlot GUI back on
