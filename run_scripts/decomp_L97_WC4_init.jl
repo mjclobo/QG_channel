@@ -39,7 +39,7 @@ y = collect(0:dy:Ly-dy)
 # Model params
 ################################################################################
 
-beta = 0.25 #
+beta = 0.0 #0.25 #
 
 # Do not change these vvv
 f0 = 1.0 # 1e-4
@@ -173,6 +173,9 @@ t0 = 0    # initial timestamp (in seconds)
 ################################################################################
 include(src_dir * "../define_vars.jl")
 params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, ν, r, α, U0, WC)
+
+isdir(fig_path) || mkpath(fig_path)
+isdir(diag_dir) || mkpath(diag_dir)
 
 run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind)
 

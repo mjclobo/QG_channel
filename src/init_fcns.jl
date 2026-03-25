@@ -283,7 +283,7 @@ end
 
 
 
-function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; timestepper="RK4", output_every=500, save_ind_start=1, save_ind_end=Ny)
+function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; timestepper="RK4", output_every=500, save_ind_start=1, save_ind_end=Ny)
     start_time = time()
     # To turn off the PyPlot GUI
     PyPlot.pygui(false)
