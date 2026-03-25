@@ -177,7 +177,7 @@ params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, �
 isdir(fig_path) || mkpath(fig_path)
 isdir(diag_dir) || mkpath(diag_dir)
 
-run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind)
+run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind)
 
 
 # now you can run L97_WC4_SS.jl to calculate steady-state turbulent statistics

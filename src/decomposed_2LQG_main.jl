@@ -352,7 +352,7 @@ Invert two-layer zonal-mean PV to get streamfunction for each layer.
 - q1_bar, q2_bar: Ny-element vectors of zonal-mean PV
 - ψ_bg_lower: Dirichlet value at bottom of layer 1
 """
-function invert_qg_pv_bar2L(solver::PVBarSolver2L, q1_bar, q2_bar, ψ_bg_lower::Float64)
+function invert_qg_pv_bar2L(solver::PVBarSolver2L, q1_bar, q2_bar; ψ_bg_lower = 1.0)
     Ny = solver.Ny
 
     # Build RHS vector
@@ -386,8 +386,8 @@ end
 
 
 #####################################################################
-function rhs_prime(q1_prime, q2_prime, q1_bar, q2_bar)
-    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
+function rhs_prime(q1_prime, q2_prime, q1_bar, q2_bar, ψ_diff_bg)
+    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
 
     # removes checkerboard mode
     filter_qprime!(q1_prime)
@@ -419,8 +419,8 @@ function rhs_prime(q1_prime, q2_prime, q1_bar, q2_bar)
     return dq1dt, dq2dt
 end
 
-function rhs_bar(q1_bar, q2_bar, q1_prime, q2_prime)
-    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
+function rhs_bar(q1_bar, q2_bar, q1_prime, q2_prime, ψ_diff_bg)
+    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
 
     filter_qprime!(q1_prime)
     filter_qprime!(q2_prime)
@@ -509,7 +509,7 @@ end
 
 function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, dy_v_qpsq1, dy_v_qpsq2, q1τ, q2τ, rq2ζ2, γ1_accum, γ2_accum)
 
-    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
+    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
     ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
 
     γ1 = d_dy(reshape(q1_bar, (1, Ny)), dy) .+ beta

@@ -297,7 +297,7 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
     cnt=1
     ell=1
 
-    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
+    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
 
     ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
     u1_prime, v1_prime = u_from_psi(ψ1_prime)
@@ -343,11 +343,11 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
 
     for n = 1:nt
 
-        q1_prime, q2_prime, q1_bar, q2_bar = rk4_coupled(q1_prime, q2_prime, q1_bar, q2_bar, dt)
+        q1_prime, q2_prime, q1_bar, q2_bar = rk4_coupled(q1_prime, q2_prime, q1_bar, q2_bar, ψ_diff_bg, dt)
 
         if mod(n, output_every) == 0      # output a message
 
-            ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
+            ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
 
         
             ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
@@ -376,9 +376,9 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
 
         if mod(n, save_every) == 0          # save streamfunction fields
             if save_bool==true # && n >= start_saving*nt
-                # ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar, ψ1_bg[1])
+                # ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar)
                 # ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
-                ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
+                ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
 
             
                 ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
@@ -396,7 +396,7 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
             if plot_basic_bool==true
                 # ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar, ψ1_bg[1])
                 # ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
-                ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
+                ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
 
             
                 ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
@@ -440,9 +440,9 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
     end
 
     if save_last==true
-        # ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar, ψ1_bg[1])
+        # ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar)
         # ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
-        ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar, ψ1_bg[1])
+        ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
     
         ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
     
