@@ -507,7 +507,7 @@ end
 # end
 
 
-function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, dy_v_qpsq1, dy_v_qpsq2, q1τ, q2τ, rq2ζ2, γ1_accum, γ2_accum)
+function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, dy_v_qpsq1, dy_v_qpsq2, q1τ, q2τ, rq2ζ2, γ1_accum, γ2_accum, u1_accum, u2_accum)
 
     ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
     ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
@@ -523,6 +523,9 @@ function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2
 
     u1, v1 = u_from_psi(ψ1_prime)
     u2, v2 = u_from_psi(ψ2_prime)
+
+    u1_accum .+= mean(u1, dims=1)[:]
+    u2_accum .+= mean(u2, dims=1)[:]
 
     ## -v_i zeta_i
     v1ζ1 .+= vec(mean(v1 .* L2D(ψ1_prime), dims=1)) # .* γ1

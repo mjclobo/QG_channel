@@ -66,7 +66,7 @@ Ld = sqrt((H1+H2) * gprime) / 2 / f0    # for beta=0.25 and U0=1, LSA says Ld \l
 cfl = 0.01      # nominal CFL
 
 dt = cfl * minimum([dx, dy]) / U0       # time step
-ndays = 300
+ndays = 30
 
 nt = round(Int, ndays/dt)                             # number of time steps
 
@@ -132,7 +132,7 @@ plot_every = round(Int,nt/20)      # period of plot output frequency
 
 # diagnostics
 diag_dir = "/home/matt/Desktop/research/QG/QG_channel_output/diagnostics/WC_init/"
-diag_bool = false
+diag_bool = true
 nrg_diag_bool = true
 diag_every = round(Int,nt/30)      # period of plot output frequency
 
@@ -177,7 +177,7 @@ params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, �
 isdir(fig_path) || mkpath(fig_path)
 isdir(diag_dir) || mkpath(diag_dir)
 
-run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind)
+run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind, t_start_diag=10)
 
 
 # now you can run L97_WC4_SS.jl to calculate steady-state turbulent statistics
