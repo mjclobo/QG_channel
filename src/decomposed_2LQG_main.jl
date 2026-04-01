@@ -524,8 +524,11 @@ function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2
     u1, v1 = u_from_psi(ψ1_prime)
     u2, v2 = u_from_psi(ψ2_prime)
 
-    u1_accum .+= mean(u1, dims=1)[:]
-    u2_accum .+= mean(u2, dims=1)[:]
+    u1t, v1t = u_from_psi(ψ1)
+    u2t, v2t = u_from_psi(ψ2)
+
+    u1_accum .+= mean(u1t, dims=1)[:]
+    u2_accum .+= mean(u2t, dims=1)[:]
 
     ## -v_i zeta_i
     v1ζ1 .+= vec(mean(v1 .* L2D(ψ1_prime), dims=1)) # .* γ1

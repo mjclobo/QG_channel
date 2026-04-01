@@ -76,8 +76,8 @@ function Lee1997_bg_jet(U0, WC; σ=6.0)
     U = zeros(length(y))
     y_cent = y .+ dy/2 .- Ly/2
 
-    upper_jet_bound = ceil(Int, WS * length(y))+1
-    lower_jet_bound = ceil(Int, (1 - WS) * length(y))-1
+    # upper_jet_bound = ceil(Int, WS * length(y))+1
+    # lower_jet_bound = ceil(Int, (1 - WS) * length(y))-1
 
     # # North of jet
     # U[1:upper_jet_bound] .= @. U0 * exp(-((y_cent[1:upper_jet_bound] - y_cent[upper_jet_bound])^2) / σ^2) * half_Hann_window(y[1:upper_jet_bound+floor(Int, 2*WC/Ly)], WS * Ly)
@@ -95,6 +95,9 @@ function Lee1997_bg_jet(U0, WC; σ=6.0)
             U[i] = U0 * exp(-(abs(yi) - WC)^2 * σ^-2)
         end
     end
+
+    upper_jet_bound = findlast(x->x==U0, U)
+    lower_jet_bound = findlast(x->x==U0, U)
 
     # this is also a good option!
     # U .= U0 .* 0.5 .* (1 .- tanh.(5 .* (abs.(y_cent) .- WC) ./ s))
@@ -344,6 +347,9 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
     end
 
     for n = 1:nt
+
+        # potentially update background target field
+        # ψ_diff_bg = ψ_diff_bg_of_t(t0 + n * dt)
 
         q1_prime, q2_prime, q1_bar, q2_bar = rk4_coupled(q1_prime, q2_prime, q1_bar, q2_bar, ψ_diff_bg, dt)
 
