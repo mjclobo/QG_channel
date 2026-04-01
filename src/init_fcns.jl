@@ -96,7 +96,7 @@ function Lee1997_bg_jet(U0, WC; σ=6.0)
         end
     end
 
-    upper_jet_bound = findlast(x->x==U0, U)
+    upper_jet_bound = findfirst(x->x==U0, U)
     lower_jet_bound = findlast(x->x==U0, U)
 
     # this is also a good option!
@@ -105,7 +105,7 @@ function Lee1997_bg_jet(U0, WC; σ=6.0)
     # Numerically integrate to get ψ(y)
     ψ_bg = -cumtrapz(y, U)  # U = -dψ/dy ⇒ ψ = -∫ U dy
 
-    return ψ_bg, U, upper_jet_bound+1, lower_jet_bound-1
+    return ψ_bg, U, upper_jet_bound, lower_jet_bound
 end
 
 # function Lee1997_bg_jet(U0, y, Ly, WC)
