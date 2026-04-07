@@ -64,7 +64,7 @@ function cumtrapz(X::T, Y::T) where {T <: AbstractVector}
     return out
 end
 
-function Lee1997_bg_jet(U0, WC; σ=6.0)
+function Lee1997_bg_jet(U0, WC; σ=4.0)
     dy = y[2] - y[1]
 
     WS = (1 - 2*WC/Ly)/2    # width of a ``side'', i.e., the distance in the y direction over which background flow decays from U0 to zero; normalized from 0 to 1
@@ -356,12 +356,11 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
         if mod(n, output_every) == 0      # output a message
 
             ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
-
         
             ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
 
-            ψ1 = ψ1_prime # ψ1_bar' .+ ψ1_prime
-            ψ2 = ψ2_prime # ψ2_bar' .+ ψ2_prime
+            ψ1 = ψ1_bar' .+ ψ1_prime # ψ1_prime # 
+            ψ2 = ψ2_bar' .+ ψ2_prime # ψ2_prime # 
         
             if isnan(ψ1[2,2])
                 error("Psi is NaN")
@@ -369,13 +368,15 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
                 u1, v1 = u_from_psi(ψ1)
                 u2, v2 = u_from_psi(ψ2)
 
+                total_nrg = 0.5 * sum(u1.^2 .+ v1.^2) + 0.5 * sum(u2.^2 .+ v2.^2) + sum((0.5 * (ψ1 .- ψ2)).^2)
+
                 cfl = dt * maximum([maximum([u1; u2]) / dx, maximum([v1; v2]) / dy])
 
                 elapsed_time = time() - start_time
 
                 # modified from GophysicalFlows.jl ex
-                log = @sprintf("step: %04d, t: %.1f, cfl: %.2f, KE1 avg.: %.4e, KE2 avg.: %.4e, ens1: %.4e, ens2: %.4e, walltime: %.2f min",
-                n, t0+n*dt, cfl, mean(u1.^2 .+ v1.^2), mean(u2.^2 .+ v2.^2), sum(L2D(ψ1).^2), sum(L2D(ψ2).^2), elapsed_time/60)
+                log = @sprintf("step: %04d, t: %.1f, cfl: %.2f, KE1 avg.: %.4e, KE2 avg.: %.4e, KE tot.: %.4e, ens1: %.4e, ens2: %.4e, walltime: %.2f min",
+                n, t0+n*dt, cfl, mean(u1.^2 .+ v1.^2), mean(u2.^2 .+ v2.^2), total_nrg, sum(L2D(ψ1).^2), sum(L2D(ψ2).^2), elapsed_time/60)
 
                 println(log)
 

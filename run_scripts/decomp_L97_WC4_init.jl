@@ -23,10 +23,10 @@ using KernelAbstractions
 ################################################################################
 
 Nx = 32
-Ny = 80
+Ny = 64
 Nz = 2
 
-Lx = 36
+Lx = 45
 Ly = 90 
 dx = Lx / Nx
 dy = Ly / Ny
@@ -39,7 +39,7 @@ y = collect(0:dy:Ly-dy)
 # Model params
 ################################################################################
 
-beta = 0.0 #0.25 #
+beta = 0.25 #
 
 # Do not change these vvv
 f0 = 1.0 # 1e-4
@@ -63,10 +63,10 @@ Ld = sqrt((H1+H2) * gprime) / 2 / f0    # for beta=0.25 and U0=1, LSA says Ld \l
 # Timestepping params
 ################################################################################
 
-cfl = 0.01      # nominal CFL
+cfl = 0.02      # nominal CFL
 
 dt = cfl * minimum([dx, dy]) / U0       # time step
-ndays = 30
+ndays = 500
 
 nt = round(Int, ndays/dt)                             # number of time steps
 
@@ -100,7 +100,7 @@ end
 # Define background flow profile
 ################################################################################
 
-WC = 14  # Width of boundary where background flow decays to zero (max of 0.5)
+WC = 10  # Width of boundary where background flow decays to zero (max of 0.5)
 
 ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC)
 
@@ -128,7 +128,7 @@ save_last = true
 plot_basic_bool = true
 plot_BCI_bool = false
 fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/WC_init" * string(beta) * string(WC) * "/"
-plot_every = round(Int,nt/20)      # period of plot output frequency
+plot_every = round(Int,nt/60)      # period of plot output frequency
 
 # diagnostics
 diag_dir = "/home/matt/Desktop/research/QG/QG_channel_output/diagnostics/WC_init/"
@@ -139,10 +139,14 @@ diag_every = round(Int,nt/30)      # period of plot output frequency
 ################################################################################
 # Damping (biharmonic viscosity, linear friction, and thermal damping)
 ################################################################################
-ν = 1e-3 #  0.01 * dx^4 / dt # 1e6          # Hyperviscosity (m⁴/s)  L97 uses 6e-3
+# ν = 0.1 * dx^-4 * dt # 1e6          # Hyperviscosity (m⁴/s)  L97 uses 6e-3 (m^6 / s)
+
+# Aim for grid-scale damping over 10 timesteps
+N_steps = 10.0
+ν = 10 * (dx^4) / (N_steps * dt * (2π)^4)
 
 r = 0.1         # Ekman friction (1/s)  L97 uses 0.1
-α = 40^-1        # Thermal damping (1/s)
+α = 30^-1        # Thermal damping (1/s)
 
 ################################################################################
 # Set initial conditions
@@ -163,8 +167,12 @@ seed!(1234)
 # q1 .+= 1e-2 * randn(Nx, Ny)
 # q2 .+= 1e-2 * randn(Nx, Ny)
 
-q1_prime = 1e-2 * randn(Nx, Ny)    #  zeros((Nx, Ny))  #
-q2_prime = 1e-2 * randn(Nx, Ny)    # zeros((Nx, Ny))  # 
+q1_prime = 1e2 .* 1e-2 * randn(Nx, Ny)    #  zeros((Nx, Ny))  #
+q2_prime = 1e2 .* 1e-2 * randn(Nx, Ny)    # zeros((Nx, Ny))  # 
+
+q1_prime[:,1] .= 0.0; q1_prime[:,Ny] .= 0.0; 
+q2_prime[:,1] .= 0.0; q2_prime[:,Ny] .= 0.0; 
+
 
 t0 = 0    # initial timestamp (in seconds)
 

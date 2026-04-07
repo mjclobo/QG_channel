@@ -56,7 +56,7 @@ function save_basic_anim_panel(fig_path, ell, q1, q2, ψ1, ψ2, U_bg, t)
     fig, ax = plt.subplots(2, 3, figsize=(14, 10), width_ratios=[1., 1., 0.4])
 
     ax2lim = maximum(abs.(ψ1 .- mean(ψ1, dims=1)))
-    pc3 = ax[3].contour(x, y, (ψ1 .- mean(ψ1, dims=1))', cmap=PyPlot.cm.PiYG, vmin=-ax2lim, vmax=ax2lim, levels=7)
+    pc3 = ax[3].contourf(x, y, (ψ1 .- mean(ψ1, dims=1))', cmap=PyPlot.cm.PiYG, vmin=-ax2lim, vmax=ax2lim, levels=7)
     ax[3].set_title("ψ1  at t = " * string(round(Int, t)) * " days")
 
     plt.colorbar(pc3)
