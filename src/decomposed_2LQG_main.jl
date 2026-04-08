@@ -1105,3 +1105,44 @@ function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2
 end
 
 
+
+
+function energy_budget(q1_bar, q2_bar, q1_prime, q2_prime, save_ind_start, save_ind_end, CBC, CBT, therm_damping, mech_damping)
+
+    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
+    ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
+
+    γ1 = d_dy(reshape(q1_bar, (1, Ny)), dy) .+ beta
+    γ2 = d_dy(reshape(q2_bar, (1, Ny)), dy) .+ beta
+
+    ψ1 = ψ1_bar' .+ ψ1_prime
+    ψ2 = ψ2_bar' .+ ψ2_prime
+
+    u1_prime, v1_prime = u_from_psi(ψ1_prime)
+    u2_prime, v2_prime = u_from_psi(ψ2_prime)
+
+    u1t, v1t = u_from_psi(ψ1)
+    u2t, v2t = u_from_psi(ψ2)
+
+    u1_bar = mean(u1t, dims=1)
+    u2_bar = mean(u2t, dims=1)
+
+    temp = (u1_bar .- u2_bar) .* mean(ψ1_prime .* v2_prime, dims=1) ./ 2
+
+    CBC += mean(temp[save_ind_start:save_ind_end])
+
+    temp = u1_bar .* d_dy(mean(u1_prime .* v1_prime, dims=1), dy) .+ u2_bar .* d_dy(mean(u2_prime .* v2_prime, dims=1), dy)
+
+    CBT += mean(temp[save_ind_start:save_ind_end])
+
+    temp = α * F1 .* mean(((ψ1_prime .- ψ2_prime).^ 2) ./ 2, dims=1) 
+
+    therm_damping -= mean(temp[save_ind_start:save_ind_end])
+
+    temp = r .* mean(u2_prime.^2 .+ v2_prime.^2, dims=1)
+
+    mech_damping -= mean(temp[save_ind_start:save_ind_end])
+
+    return CBC, CBT, therm_damping, mech_damping
+end
+

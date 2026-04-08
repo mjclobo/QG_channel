@@ -332,6 +332,11 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
         u1_accum = zeros(Ny)
         u2_accum = zeros(Ny)
 
+        CBC = 0.0
+        CBT = 0.0
+        therm_damping = 0.0
+        mech_damping = 0.0
+
         diag_cnt = 1
         diag_cntr = 0
     end
@@ -443,6 +448,8 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
 
             @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, dy_v_qpsq1, dy_v_qpsq2, q1τ, q2τ, rq2ζ2, γ1_accum, γ2_accum, u1_accum, u2_accum)
 
+            CBC, CBT, therm_damping, mech_damping = energy_budget(q1_bar, q2_bar, q1_prime, q2_prime, save_ind_start, save_ind_end, CBC, CBT, therm_damping, mech_damping)
+
             diag_cntr +=1
         end
 
@@ -458,7 +465,7 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
         save_streamfunction(save_path, ψ1_bar' .+ ψ1_prime, ψ2_bar' .+ ψ2_prime, t0+nt*dt, params)
     end
 
-    if diag_bool==true
+    if diag_bool==true && nrg_diag_bool==true
         t_diag = t0+nt*dt
         file_name = struct_to_string(params) * "_diags_t$t_diag.jld"
         # Save variables to JLD file
@@ -472,7 +479,9 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
         "dy_v_qpsq2" => dy_v_qpsq2 ./diag_cntr, "v1τ" => v1τ./diag_cntr, "v2τ" => v2τ./diag_cntr,
         "q1Jbar" => q1Jbar./diag_cntr, "q2Jbar" => q2Jbar./diag_cntr, "q1τ" => q1τ./diag_cntr, "q2τ" => q2τ./diag_cntr,
         "rq2ζ2" => rq2ζ2./diag_cntr, "γ1_accum" => γ1_accum./diag_cntr, "γ2_accum" => γ2_accum./diag_cntr,
-        "u1_accum" => u1_accum./diag_cntr, "u2_accum" => u2_accum./diag_cntr, "diag_cntr" => diag_cntr)
+        "u1_accum" => u1_accum./diag_cntr, "u2_accum" => u2_accum./diag_cntr,
+        "CBC" => CBC/diag_cntr, "CBT" => CBT/diag_cntr, "therm_damping" => therm_damping/diag_cntr, "mech_damping" => mech_damping/diag_cntr,
+        "diag_cntr" => diag_cntr)
 
         jldsave(diag_dir * file_name; jld_data)
 
