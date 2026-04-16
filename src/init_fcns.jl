@@ -20,6 +20,7 @@ struct ModelParams
     α::Float64
     U0::Float64
     WC::Float64
+    trans::Float64
 end
 
 
