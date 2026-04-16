@@ -100,9 +100,11 @@ end
 # Define background flow profile
 ################################################################################
 
-WC = 10  # Width of boundary where background flow decays to zero (max of 0.5)
+WC = 14  # Width of boundary where background flow decays to zero (max of 0.5)
+trans = 1.0
 
-ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC)
+# ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC) # ; σ=20.0)
+ψ1_bg, U_bg, zone_start_ind, zone_end_ind = blended_transport_jet(y; T=39.0, W=WC, trans=trans)
 
 # ψ1_bg = ψ1_bg
 ψ2_bg = zeros(size(ψ1_bg))
@@ -115,7 +117,7 @@ WC = 10  # Width of boundary where background flow decays to zero (max of 0.5)
 
 # this saves meridional bands (full zonal extent) of i) ψ1, ii) ψ2, and iii) t
 save_bool = true
-save_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/WC_init/"  # meridional width of domain that is saved; max of 1 will save whole meridional extent of domain
+save_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/WC_init_beta" * string(beta) * "_WC" * string(WC) * "_trans" * string(trans) * "/"  # meridional width of domain that is saved; max of 1 will save whole meridional extent of domain
 save_every = round(Int,nt/20)      # period of save frequency
 
 
@@ -127,11 +129,11 @@ save_last = true
 # this plots panels at fig_path; the plot function (defined in output_fcns.jl) can be modified to be whatever you want to see
 plot_basic_bool = true
 plot_BCI_bool = false
-fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/WC_init" * string(beta) * string(WC) * "/"
+fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/WC_init_beta" * string(beta) * "_WC" * string(WC) * "_trans" * string(trans) * "/"
 plot_every = round(Int,nt/60)      # period of plot output frequency
 
 # diagnostics
-diag_dir = "/home/matt/Desktop/research/QG/QG_channel_output/diagnostics/WC_init" * string(beta) * string(WC) * "/"
+diag_dir = "/home/matt/Desktop/research/QG/QG_channel_output/diagnostics/WC_beta" * string(beta) * "_WC" * string(WC) * "_trans" * string(trans) * "/"
 diag_bool = true
 nrg_diag_bool = true
 diag_every = round(Int,nt/30)      # period of plot output frequency
@@ -145,7 +147,7 @@ diag_every = round(Int,nt/30)      # period of plot output frequency
 N_steps = 10.0
 ν = 10 * (dx^4) / (N_steps * dt * (2π)^4)
 
-r = 0.1         # Ekman friction (1/s)  L97 uses 0.1
+r = 2 * 0.1         # Ekman friction (1/s)  L97 uses 0.1
 α = 30^-1        # Thermal damping (1/s)
 
 ################################################################################
@@ -182,10 +184,13 @@ t0 = 0    # initial timestamp (in seconds)
 include(src_dir * "../define_vars.jl")
 params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, ν, r, α, U0, WC)
 
+isdir(save_path) || mkpath(save_path)
 isdir(fig_path) || mkpath(fig_path)
 isdir(diag_dir) || mkpath(diag_dir)
 
-run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind, t_start_diag=250)
+# run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind, t_start_diag=250)
 
 
 # now you can run L97_WC4_SS.jl to calculate steady-state turbulent statistics
+
+

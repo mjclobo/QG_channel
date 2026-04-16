@@ -65,7 +65,6 @@ function cumtrapz(X::T, Y::T) where {T <: AbstractVector}
 end
 
 function Lee1997_bg_jet(U0, WC; σ=4.0)
-    dy = y[2] - y[1]
 
     WS = (1 - 2*WC/Ly)/2    # width of a ``side'', i.e., the distance in the y direction over which background flow decays from U0 to zero; normalized from 0 to 1
     if WS>0.5
@@ -74,19 +73,9 @@ function Lee1997_bg_jet(U0, WC; σ=4.0)
 
     # First build U profile
     U = zeros(length(y))
+
+    dy = y[2] - y[1]
     y_cent = y .+ dy/2 .- Ly/2
-
-    # upper_jet_bound = ceil(Int, WS * length(y))+1
-    # lower_jet_bound = ceil(Int, (1 - WS) * length(y))-1
-
-    # # North of jet
-    # U[1:upper_jet_bound] .= @. U0 * exp(-((y_cent[1:upper_jet_bound] - y_cent[upper_jet_bound])^2) / σ^2) * half_Hann_window(y[1:upper_jet_bound+floor(Int, 2*WC/Ly)], WS * Ly)
-
-    # # Middle (flat jet)
-    # U[upper_jet_bound+1:lower_jet_bound-1] .= U0
-
-    # # South of jet
-    # U[lower_jet_bound:end] .= reverse(U[1:upper_jet_bound])
 
     for (i, yi) in enumerate(y_cent)
         if abs(yi) < WC
@@ -104,6 +93,96 @@ function Lee1997_bg_jet(U0, WC; σ=4.0)
 
     # Numerically integrate to get ψ(y)
     ψ_bg = -cumtrapz(y, U)  # U = -dψ/dy ⇒ ψ = -∫ U dy
+
+    if upper_jet_bound==nothing
+        upper_jet_bound = 1
+        lower_jet_bound = length(y)
+    end
+
+    return ψ_bg, U, upper_jet_bound, lower_jet_bound
+end
+
+# function blended_transport_jet(yi, T, W, λ; α=0.0)
+#     dy = yi[2] - yi[1]
+#     y = yi .+ dy/2 .- Ly/2
+
+#     # --- Lee-style with exponential tails ---
+#     function U_lee(yi)
+#         if abs(yi) <= W
+#             return 1.0
+#         else
+#             return exp(-(abs(yi)-W)/λ)
+#         end
+#     end
+
+#     # --- sech^2 with MATCHED decay rate ---
+#     U_ph(yi) = sech(yi/(2λ))^2
+
+#     # --- geometric blend ---
+#     Ũ = similar(y)
+#     for (i, yi) in enumerate(y)
+#         Ũ[i] = U_lee(yi)^(1-α) * U_ph(yi)^α
+#     end
+
+#     # --- normalize to fixed transport ---
+#     T̃ = sum(Ũ) * dy
+#     U = T * Ũ / T̃
+
+#     return U
+# end
+
+
+function blended_transport_jet(yi; T=35.0, W=10.0, σ=6.0, trans=0.0)
+    dy = yi[2] - yi[1]
+    y = yi .+ dy/2 .- Ly/2
+
+    # --- 1. Flat core + ultra-smooth Gaussian shoulders ---
+    function U_flat(yi)
+        r = abs(yi)
+        if r <= W
+            return 1.0
+        else
+            ξ = (r - W) / σ
+            return exp(-ξ^4)   # <-- key: quartic Gaussian
+        end
+    end
+
+    # --- 2. Pavan–Held profile (rescaled to comparable width) ---
+    σp = W / 1.0   # tunable but keeps widths comparable
+    U_ph(yi) = sech(yi / σp)^2
+
+    # --- 3. Geometric blend ---
+    Ũ = similar(y)
+    for (i, yi) in enumerate(y)
+        Ũ[i] = U_flat(yi)^(1-trans) * U_ph(yi)^trans
+    end
+
+    # --- Hanning taper (only outside |y| > W) ---
+    L = maximum(abs.(y))   # half-domain size
+
+    taper = similar(y)
+
+    for (i, yi) in enumerate(y)
+        r = abs(yi)
+        if r <= W
+            taper[i] = 1.0
+        else
+            ξ = (r - W) / (L - W)   # map to [0,1]
+            taper[i] = 0.5 * (1 + cos(pi * ξ))  # Hanning window
+        end
+    end
+
+    # Apply taper
+    Ũ .= Ũ .* taper
+
+    # --- 4. Normalize to fixed transport ---
+    T̃ = sum(Ũ) * dy
+    U = T .* Ũ ./ T̃
+
+    ψ_bg = -cumtrapz(y, U) 
+
+    upper_jet_bound = 1
+    lower_jet_bound = length(y)
 
     return ψ_bg, U, upper_jet_bound, lower_jet_bound
 end
@@ -348,6 +427,7 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
         EKE_diag = zeros(2, n_diag)
         EAPE_diag = zeros(n_diag)
         EAPE_diag2 = zeros(n_diag)
+        zonal_EAPE_diag = zeros(n_diag)
 
         diag_cnt = 1
     end
@@ -428,7 +508,9 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
 
         # diagnostics
         if mod(n, diag_every) == 0 && nrg_diag_bool == true
+            ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
             ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
+
             u1, v1 = u_from_psi(ψ1_prime[:,save_ind_start:save_ind_end])
             u2, v2 = u_from_psi(ψ2_prime[:,save_ind_start:save_ind_end])
 
@@ -437,6 +519,8 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
 
             EAPE_diag[diag_cnt] = mean((0.5 * (ψ1_prime[:,save_ind_start:save_ind_end] .- ψ2_prime[:,save_ind_start:save_ind_end])).^2)   # no Ld^-2 factor bc non-dim (and Ld=1)
             EAPE_diag2[diag_cnt] = mean(mean(0.5 * (ψ1_prime[:,save_ind_start:save_ind_end] .- ψ2_prime[:,save_ind_start:save_ind_end]), dims=1).^2)
+
+            zonal_EAPE_diag[diag_cnt] = mean((0.5 * (ψ1_bar[save_ind_start:save_ind_end] .- ψ2_bar[save_ind_start:save_ind_end])).^2)
 
             # v1ζ1[:, diag_cnt], v2ζ2[:, diag_cnt], v1τ[:, diag_cnt], v2τ[:, diag_cnt], q1Jbar[:, diag_cnt], q2Jbar[:, diag_cnt], q1τ[:, diag_cnt], q2τ[:, diag_cnt], rq2ζ2[:, diag_cnt] = pseudomomentum_budget(q1_bar, q2_bar, q1_prime, q2_prime)
 
@@ -476,7 +560,8 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
         # "v1ζ1" => v1ζ1, "v2ζ2" => v2ζ2, "v1τ" => v1τ, "v2τ" => v2τ,
         # "q1Jbar" => q1Jbar, "q2Jbar" => q2Jbar, "q1τ" => q1τ, "q2τ" => q2τ,
         # "rq2ζ2" => rq2ζ2)
-        jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => Array(EAPE_diag), "EAPE_diag2" => Array(EAPE_diag2), "t" => time_array,
+        jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => Array(EAPE_diag), "EAPE_diag2" => Array(EAPE_diag2),
+        "zonal_EAPE_diag" => Array(zonal_EAPE_diag), "t" => time_array,
         "v1ζ1" => v1ζ1./diag_cntr, "v2ζ2" => v2ζ2./diag_cntr, "dy_v_qpsq1" => dy_v_qpsq1 ./diag_cntr,
         "dy_v_qpsq2" => dy_v_qpsq2 ./diag_cntr, "v1τ" => v1τ./diag_cntr, "v2τ" => v2τ./diag_cntr,
         "q1Jbar" => q1Jbar./diag_cntr, "q2Jbar" => q2Jbar./diag_cntr, "q1τ" => q1τ./diag_cntr, "q2τ" => q2τ./diag_cntr,
