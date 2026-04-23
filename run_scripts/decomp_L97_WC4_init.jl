@@ -100,11 +100,13 @@ end
 # Define background flow profile
 ################################################################################
 
-WC = 14  # Width of boundary where background flow decays to zero (max of 0.5)
 trans = 1.0
 
+WC = 20 # 11 # 13 (7, 24.75); (8, 26.75); (9, 28.75); (10, 30.75); (11, 32.75)
+T = 19.75  # 42.5 for 16; 32.5 for 11; 36.75 for WC=13
+
 # ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC) # ; σ=20.0)
-ψ1_bg, U_bg, zone_start_ind, zone_end_ind = blended_transport_jet(y; T=39.0, W=WC, trans=trans)
+ψ1_bg, U_bg, zone_start_ind, zone_end_ind = blended_transport_jet(y; T=T, W=WC, trans=trans)
 
 # ψ1_bg = ψ1_bg
 ψ2_bg = zeros(size(ψ1_bg))
@@ -183,7 +185,7 @@ t0 = 0    # initial timestamp (in seconds)
 # Run model from initial conditions
 ################################################################################
 include(src_dir * "../define_vars.jl")
-params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, ν, r, α, U0, WC)
+params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, ν, r, α, U0, WC, trans)
 
 isdir(save_path) || mkpath(save_path)
 isdir(fig_path) || mkpath(fig_path)
@@ -194,4 +196,14 @@ isdir(diag_dir) || mkpath(diag_dir)
 
 # now you can run L97_WC4_SS.jl to calculate steady-state turbulent statistics
 
+# U_bg_all = zeros(11, Ny)
+
+# fig, ax = plt.subplots(1, 1, figsize=(10,5))
+
+# for (i, t) in enumerate(range(0, 1, 11))
+#     ψ1_bg, U_bg_all[i,:], zone_start_ind, zone_end_ind = blended_transport_jet(y; T=0, W=15, trans=t)
+
+#     ax.plot(y, U_bg_all[i,:])
+
+# end
 

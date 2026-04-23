@@ -177,8 +177,12 @@ function blended_transport_jet(yi; T=35.0, W=10.0, σ=6.0, trans=0.0)
     Ũ .= Ũ .* taper
 
     # --- 4. Normalize to fixed transport ---
-    T̃ = sum(Ũ) * dy
-    U = T .* Ũ ./ T̃
+    if T==0
+        U = Ũ
+    else
+        T̃ = sum(Ũ) * dy
+        U = T .* Ũ ./ T̃
+    end
 
     ψ_bg = -cumtrapz(y, U) 
 

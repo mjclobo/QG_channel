@@ -117,15 +117,9 @@ function hyperviscous(q; L = L2D)
     # 2. Second Laplacian ∇⁴q
     # This enforces the Feldstein & Held intermediate zeroing
     if ndims(lap1) == 2
-        # lap1[:, 1] .= 0.0
-        # lap1[:, end] .= 0.0
-
-        lap1[:,1] = lap1[:,2]
-        lap1[:,end] = lap1[:,end-1]
+        lap1[:,1] .= lap1[:,2]
+        lap1[:,end] .= lap1[:,end-1]
     else
-        # lap1[1] = 0.0
-        # lap1[end] = 0.0
-
         lap1[1] = lap1[2]
         lap1[end] = lap1[end-1]
     end
@@ -134,15 +128,9 @@ function hyperviscous(q; L = L2D)
     # 3. Third Laplacian ∇⁶q
     # Again, zero the boundaries to satisfy the 3rd-derivative BC
     if ndims(lap2) == 2
-        # lap2[:, 1] .= 0.0
-        # lap2[:, end] .= 0.0
-
-        lap2[:,1] = lap2[:,2]
-        lap2[:,end] = lap2[:,end-1]
+        lap2[:,1] .= lap2[:,2]
+        lap2[:,end] .= lap2[:,end-1]
     else
-        # lap2[1] = 0.0
-        # lap2[end] = 0.0
-
         lap2[1] = lap2[2]
         lap2[end] = lap2[end-1]
     end
