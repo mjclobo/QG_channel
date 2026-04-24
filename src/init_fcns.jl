@@ -103,39 +103,8 @@ function Lee1997_bg_jet(U0, WC; σ=4.0)
     return ψ_bg, U, upper_jet_bound, lower_jet_bound
 end
 
-# function blended_transport_jet(yi, T, W, λ; α=0.0)
-#     dy = yi[2] - yi[1]
-#     y = yi .+ dy/2 .- Ly/2
 
-#     # --- Lee-style with exponential tails ---
-#     function U_lee(yi)
-#         if abs(yi) <= W
-#             return 1.0
-#         else
-#             return exp(-(abs(yi)-W)/λ)
-#         end
-#     end
-
-#     # --- sech^2 with MATCHED decay rate ---
-#     U_ph(yi) = sech(yi/(2λ))^2
-
-#     # --- geometric blend ---
-#     Ũ = similar(y)
-#     for (i, yi) in enumerate(y)
-#         Ũ[i] = U_lee(yi)^(1-α) * U_ph(yi)^α
-#     end
-
-#     # --- normalize to fixed transport ---
-#     T̃ = sum(Ũ) * dy
-#     U = T * Ũ / T̃
-
-#     return U
-# end
-
-
-function blended_transport_jet(yi; T=35.0, W=10.0, σ=6.0, trans=0.0)
-    dy = yi[2] - yi[1]
-    y = yi .+ dy/2 .- Ly/2
+function blended_transport_jet(y; T=35.0, W=10.0, σ=6.0, trans=0.0)
 
     # --- 1. Flat core + ultra-smooth Gaussian shoulders ---
     function U_flat(yi)
@@ -192,34 +161,49 @@ function blended_transport_jet(yi; T=35.0, W=10.0, σ=6.0, trans=0.0)
     return ψ_bg, U, upper_jet_bound, lower_jet_bound
 end
 
-# function Lee1997_bg_jet(U0, y, Ly, WC)
-#     dy = y[2] - y[1]
 
-#     # First build U profile
-#     U = zeros(length(y))
-#     y_cent = y .+ dy/2
-#     s = 0.25 * Ly  # from Lee (1997)
+function double_jet(y; sep=15, σ=3.0, Wtaper = 35)
+    # sep is a separation parameter that measures how far the respective
+    # baroclinic zone centers are from the center of the domain
 
-#     upper_jet_bound = ceil(Int, WC * length(y))
-#     lower_jet_bound = ceil(Int, (1 - WC) * length(y))
+    ## y MUST BE CENTERED ON ZERO
 
-#     # North of jet
-#     U[1:upper_jet_bound] .= @. U0 * exp(-((y_cent[1:upper_jet_bound] - WC * Ly)^2) / s^2) * half_Hann_window(y[1:upper_jet_bound], WC * Ly)
+    # --- 1. Flat core + ultra-smooth Gaussian shoulders ---
+    function Gaussian_U(yi, cent, σ)
+        return @. exp(-(yi - cent)^2 / (2*σ^2))
+    end
 
-#     # Middle (flat jet)
-#     U[upper_jet_bound+1:lower_jet_bound-1] .= U0
+    # need to align cent with nearest discrete y value
+    sep_proj = y[argmin(abs.(y .- sep))]
 
-#     # South of jet
-#     U[lower_jet_bound:end] .= @. U0 * exp(-((y_cent[lower_jet_bound:end] - (1 - WC) * Ly)^2) / s^2)
-#     U[lower_jet_bound:end] .= U[lower_jet_bound:end] .* half_Hann_window(y[1:upper_jet_bound], WC * Ly; rev=true)
+    # define background flow profile
+    U = Gaussian_U(y, sep_proj, σ) .+ Gaussian_U(y, -sep_proj, σ)
 
-#     # Numerically integrate to get ψ(y)
-#     ψ_bg = -cumtrapz(y, U)  # U = -dψ/dy ⇒ ψ = -∫ U dy
+    ## tapering to zero at domain edges
+    L = maximum(abs.(y))   # half-domain size
 
-#     return ψ_bg', U
-# end
+    taper = similar(y)
 
+    for (i, yi) in enumerate(y)
+        r = abs(yi)
+        if r <= Wtaper
+            taper[i] = 1.0
+        else
+            ξ = (r - Wtaper) / (L - Wtaper)   # map to [0,1]
+            taper[i] = 0.5 * (1 + cos(pi * ξ))  # Hanning window
+        end
+    end
 
+    U = U .* taper
+
+    # finding streamfunction from U
+    ψ_bg = -cumtrapz(y, U) 
+
+    upper_jet_bound = 1
+    lower_jet_bound = length(y)
+
+    return ψ_bg, U, upper_jet_bound, lower_jet_bound
+end
 
 ################################################################################
 # Functions for restart and building psi of time

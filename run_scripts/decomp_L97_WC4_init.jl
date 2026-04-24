@@ -28,12 +28,21 @@ Nz = 2
 
 Lx = 45
 Ly = 90 
-dx = Lx / Nx
-dy = Ly / Ny
 
 # Do not change these vvv
-x = collect(0:dx:Lx-dx)
-y = collect(0:dy:Ly-dy)
+x = collect(range(0, Lx, Nx))
+y = collect(range(-Ly/2, Ly/2, Ny))
+
+dx = x[2]-x[1]
+dy = y[2]-y[1]
+
+# # old defs to look at old forcing
+# dx = Lx / Nx
+# dy = Ly / Ny
+
+# # Do not change these vvv
+# x = collect(0:dx:Lx-dx)
+# y = collect(0:dy:Ly-dy);
 
 ################################################################################
 # Model params
@@ -100,13 +109,14 @@ end
 # Define background flow profile
 ################################################################################
 
-trans = 1.0
+trans = 0.0
 
-WC = 20 # 11 # 13 (7, 24.75); (8, 26.75); (9, 28.75); (10, 30.75); (11, 32.75)
-T = 19.75  # 42.5 for 16; 32.5 for 11; 36.75 for WC=13
+WC = 13 # 11 is 19.75 if you want U0=1 for trans=1.0 # 13 (7, 24.75); (8, 26.75); (9, 28.75); (10, 30.75); (11, 32.75)
+T = 0.0  # 42.5 for 16; 32.5 for 11; 36.75 for WC=13
 
 # ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC) # ; σ=20.0)
 ψ1_bg, U_bg, zone_start_ind, zone_end_ind = blended_transport_jet(y; T=T, W=WC, trans=trans)
+# ψ1_bg, U_bg, zone_start_ind, zone_end_ind = double_jet(y; sep=15, σ=3.0)
 
 # ψ1_bg = ψ1_bg
 ψ2_bg = zeros(size(ψ1_bg))
@@ -206,4 +216,3 @@ isdir(diag_dir) || mkpath(diag_dir)
 #     ax.plot(y, U_bg_all[i,:])
 
 # end
-
