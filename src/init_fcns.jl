@@ -165,7 +165,8 @@ end
 function double_jet(y; sep=15, σ=3.0, Wtaper = 35)
     # sep is a separation parameter that measures how far the respective
     # baroclinic zone centers are from the center of the domain
-
+    Ny = length(y)
+    mid_ind = Int(Ny/2)
     ## y MUST BE CENTERED ON ZERO
 
     # --- 1. Flat core + ultra-smooth Gaussian shoulders ---
@@ -177,7 +178,10 @@ function double_jet(y; sep=15, σ=3.0, Wtaper = 35)
     sep_proj = y[argmin(abs.(y .- sep))]
 
     # define background flow profile
-    U = Gaussian_U(y, sep_proj, σ) .+ Gaussian_U(y, -sep_proj, σ)
+    U = zeros(Ny)
+
+    U[1:mid_ind] = Gaussian_U(y, -sep_proj, σ)[1:mid_ind]
+    U[mid_ind+1:end] = Gaussian_U(y, sep_proj, σ)[mid_ind+1:end]
 
     ## tapering to zero at domain edges
     L = maximum(abs.(y))   # half-domain size
