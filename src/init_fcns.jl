@@ -178,10 +178,12 @@ function double_jet(y; sep=15, σ=3.0, Wtaper = 35)
     sep_proj = y[argmin(abs.(y .- sep))]
 
     # define background flow profile
-    U = zeros(Ny)
+    # U = zeros(Ny)
 
-    U[1:mid_ind] = Gaussian_U(y, -sep_proj, σ)[1:mid_ind]
-    U[mid_ind+1:end] = Gaussian_U(y, sep_proj, σ)[mid_ind+1:end]
+    # U[1:mid_ind] = Gaussian_U(y, -sep_proj, σ)[1:mid_ind]
+    # U[mid_ind+1:end] = Gaussian_U(y, sep_proj, σ)[mid_ind+1:end]
+
+    U = Gaussian_U(y, -sep_proj, σ) .+ Gaussian_U(y, sep_proj, σ)
 
     ## tapering to zero at domain edges
     L = maximum(abs.(y))   # half-domain size
@@ -204,7 +206,7 @@ function double_jet(y; sep=15, σ=3.0, Wtaper = 35)
     ψ_bg = -cumtrapz(y, U) 
 
     upper_jet_bound = 1
-    lower_jet_bound = length(y)
+    lower_jet_bound = Ny
 
     return ψ_bg, U, upper_jet_bound, lower_jet_bound
 end
