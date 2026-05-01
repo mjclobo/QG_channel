@@ -111,17 +111,32 @@ end
 
 trans = 0.0
 
-WC = 13 # 11 is 19.75 if you want U0=1 for trans=1.0 # 13 (7, 24.75); (8, 26.75); (9, 28.75); (10, 30.75); (11, 32.75)
+WC = 7 # 11 is 19.75 if you want U0=1 for trans=1.0 # 13 (7, 24.75); (8, 26.75); (9, 28.75); (10, 30.75); (11, 32.75)
 T = 0.0  # 42.5 for 16; 32.5 for 11; 36.75 for WC=13
 
-# ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC) # ; σ=20.0)
+ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC) # ; σ=20.0)
 # ψ1_bg, U_bg, zone_start_ind, zone_end_ind = blended_transport_jet(y; T=T, W=WC, trans=trans)
-ψ1_bg, U_bg, zone_start_ind, zone_end_ind = double_jet(y; sep=5, σ=6.0)
+# ψ1_bg, U_bg, zone_start_ind, zone_end_ind = double_jet(y; sep=6, σ=5.0)
 
 # ψ1_bg = ψ1_bg
 ψ2_bg = zeros(size(ψ1_bg))
 
 ψ_diff_bg = ψ1_bg .- ψ2_bg
+
+#####################################################
+pd = 250
+A0 = 11
+A1 = 3
+
+function ψ_diff_bg_of_t(t; t0=250)
+    if t < 250
+        return Lee1997_bg_jet(1, A0)
+    else
+        return Lee1997_bg_jet(1, A0 + A1 * sin(2 * pi * (t - t0) / pd))
+    end
+end
+
+bg_of_t = true
 
 ################################################################################
 # Damping (biharmonic viscosity, linear friction, and thermal damping)
@@ -132,9 +147,8 @@ T = 0.0  # 42.5 for 16; 32.5 for 11; 36.75 for WC=13
 N_steps = 10.0
 ν = 10 * (dx^4) / (N_steps * dt * (2π)^4)
 
-r = 2 * 0.1         # Ekman friction (1/s)  L97 uses 0.1
+r = 0.1         # Ekman friction (1/s)  L97 uses 0.1
 α = 30^-1        # Thermal damping (1/s)
-
 
 ################################################################################
 # Define paths for saving streamfunction files and figures; and frequency of output
@@ -161,7 +175,7 @@ plot_every = round(Int,nt/60)      # period of plot output frequency
 diag_dir = "/home/matt/Desktop/research/QG/QG_channel_output/diagnostics/WC_beta" * string(beta) * "_WC" * string(WC) * "_trans" * string(trans) * "_r" * string(r) * "/"
 diag_bool = true
 nrg_diag_bool = true
-diag_every = round(Int,nt/30)      # period of plot output frequency
+diag_every = round(Int,nt/100)      # period of plot output frequency
 
 ################################################################################
 # Set initial conditions
@@ -185,8 +199,8 @@ seed!(1234)
 q1_prime = 1e2 .* 1e-2 * randn(Nx, Ny)    #  zeros((Nx, Ny))  #
 q2_prime = 1e2 .* 1e-2 * randn(Nx, Ny)    # zeros((Nx, Ny))  # 
 
-q1_prime[:,1] .= 0.0; q1_prime[:,Ny] .= 0.0; 
-q2_prime[:,1] .= 0.0; q2_prime[:,Ny] .= 0.0; 
+q1_prime[:,1] .= 0.0; q1_prime[:,Ny] .= 0.0;
+q2_prime[:,1] .= 0.0; q2_prime[:,Ny] .= 0.0;
 
 
 t0 = 0    # initial timestamp (in seconds)
@@ -201,7 +215,7 @@ isdir(save_path) || mkpath(save_path)
 isdir(fig_path) || mkpath(fig_path)
 isdir(diag_dir) || mkpath(diag_dir)
 
-# run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind, t_start_diag=250)
+run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind, t_start_diag=250)
 
 
 # now you can run L97_WC4_SS.jl to calculate steady-state turbulent statistics

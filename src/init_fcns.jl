@@ -65,7 +65,7 @@ function cumtrapz(X::T, Y::T) where {T <: AbstractVector}
     return out
 end
 
-function Lee1997_bg_jet(U0, WC; σ=4.0)
+function Lee1997_bg_jet(U0, WC; σ=6.0)
 
     WS = (1 - 2*WC/Ly)/2    # width of a ``side'', i.e., the distance in the y direction over which background flow decays from U0 to zero; normalized from 0 to 1
     if WS>0.5
@@ -75,10 +75,7 @@ function Lee1997_bg_jet(U0, WC; σ=4.0)
     # First build U profile
     U = zeros(length(y))
 
-    dy = y[2] - y[1]
-    y_cent = y .+ dy/2 .- Ly/2
-
-    for (i, yi) in enumerate(y_cent)
+    for (i, yi) in enumerate(y)
         if abs(yi) < WC
             U[i] = U0
         else
@@ -90,7 +87,7 @@ function Lee1997_bg_jet(U0, WC; σ=4.0)
     lower_jet_bound = findlast(x->x==U0, U)
 
     # this is also a good option!
-    # U .= U0 .* 0.5 .* (1 .- tanh.(5 .* (abs.(y_cent) .- WC) ./ s))
+    # U .= U0 .* 0.5 .* (1 .- tanh.(5 .* (abs.(y) .- WC) ./ s))
 
     # Numerically integrate to get ψ(y)
     ψ_bg = -cumtrapz(y, U)  # U = -dψ/dy ⇒ ψ = -∫ U dy
@@ -424,13 +421,20 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
         EAPE_diag2 = zeros(n_diag)
         zonal_EAPE_diag = zeros(n_diag)
 
+        prod_diag = zeros(2, n_diag)
+
+        U_hov_diag = zeros(Ny, n_diag)
+
         diag_cnt = 1
     end
 
     for n = 1:nt
 
         # potentially update background target field
-        # ψ_diff_bg = ψ_diff_bg_of_t(t0 + n * dt)
+        if bg_of_t==true
+            # assumes ψ2_bg is zeros!
+            ψ_diff_bg, U_bg, zone_start_ind, zone_end_ind = ψ_diff_bg_of_t(t0 + n * dt)
+        end
 
         q1_prime, q2_prime, q1_bar, q2_bar = rk4_coupled(q1_prime, q2_prime, q1_bar, q2_bar, ψ_diff_bg, dt)
 
@@ -517,6 +521,10 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
 
             zonal_EAPE_diag[diag_cnt] = mean((0.5 * (ψ1_bar[save_ind_start:save_ind_end] .- ψ2_bar[save_ind_start:save_ind_end])).^2)
 
+            prod_diag[1, diag_cnt], prod_diag[2, diag_cnt], na1, na2 = energy_budget(q1_bar, q2_bar, q1_prime, q2_prime, save_ind_start, save_ind_end, 0.0, 0.0, 0.0, 0.0)
+
+            U_hov_diag[:, diag_cnt] = mean(u_from_psi(ψ1_bar' .+ ψ1_prime)[1], dims=1)
+
             # v1ζ1[:, diag_cnt], v2ζ2[:, diag_cnt], v1τ[:, diag_cnt], v2τ[:, diag_cnt], q1Jbar[:, diag_cnt], q2Jbar[:, diag_cnt], q1τ[:, diag_cnt], q2τ[:, diag_cnt], rq2ζ2[:, diag_cnt] = pseudomomentum_budget(q1_bar, q2_bar, q1_prime, q2_prime)
 
             # @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1[:, diag_cnt], v2ζ2[:, diag_cnt], v1τ[:, diag_cnt], v2τ[:, diag_cnt], q1Jbar[:, diag_cnt], q2Jbar[:, diag_cnt], q1τ[:, diag_cnt], q2τ[:, diag_cnt], rq2ζ2[:, diag_cnt])
@@ -556,7 +564,7 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
         # "q1Jbar" => q1Jbar, "q2Jbar" => q2Jbar, "q1τ" => q1τ, "q2τ" => q2τ,
         # "rq2ζ2" => rq2ζ2)
         jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => Array(EAPE_diag), "EAPE_diag2" => Array(EAPE_diag2),
-        "zonal_EAPE_diag" => Array(zonal_EAPE_diag), "t" => time_array,
+        "prod_diag" => Array(prod_diag), "U_hov_diag" => Array(U_hov_diag), "zonal_EAPE_diag" => Array(zonal_EAPE_diag), "t" => time_array,
         "v1ζ1" => v1ζ1./diag_cntr, "v2ζ2" => v2ζ2./diag_cntr, "dy_v_qpsq1" => dy_v_qpsq1 ./diag_cntr,
         "dy_v_qpsq2" => dy_v_qpsq2 ./diag_cntr, "v1τ" => v1τ./diag_cntr, "v2τ" => v2τ./diag_cntr,
         "q1Jbar" => q1Jbar./diag_cntr, "q2Jbar" => q2Jbar./diag_cntr, "q1τ" => q1τ./diag_cntr, "q2τ" => q2τ./diag_cntr,
