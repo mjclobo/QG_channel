@@ -208,7 +208,7 @@ function double_jet(y; sep=15, σ=3.0, Wtaper = 35)
     upper_jet_bound = 1
     lower_jet_bound = Ny
 
-    return ψ_bg, U, upper_jet_bound, lower_jet_bound
+    return ψ_bg, U ./ maximum(U), upper_jet_bound, lower_jet_bound
 end
 
 ################################################################################

@@ -116,7 +116,7 @@ T = 0.0  # 42.5 for 16; 32.5 for 11; 36.75 for WC=13
 
 # ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC) # ; σ=20.0)
 # ψ1_bg, U_bg, zone_start_ind, zone_end_ind = blended_transport_jet(y; T=T, W=WC, trans=trans)
-ψ1_bg, U_bg, zone_start_ind, zone_end_ind = double_jet(y; sep=15, σ=3.0)
+ψ1_bg, U_bg, zone_start_ind, zone_end_ind = double_jet(y; sep=5, σ=6.0)
 
 # ψ1_bg = ψ1_bg
 ψ2_bg = zeros(size(ψ1_bg))
