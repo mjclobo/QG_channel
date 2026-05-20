@@ -208,6 +208,38 @@ function double_jet(y; sep=15, σ=3.0, Wtaper = 35)
     return ψ_bg, U ./ maximum(U), upper_jet_bound, lower_jet_bound
 end
 
+function smooth_core_jet(y; U0=1.0, W=20.0)
+
+    Ny = length(y)
+    U = similar(y)
+
+    for (i, yi) in enumerate(y)
+
+        a = abs(yi)
+
+        if a >= W
+            U[i] = 0.0
+        else
+            # smooth top-hat envelope
+            envelope = 0.5 * (1 + cospi(a / W))
+
+            # “linear-core shaping”
+            core = 1 - (a / W)^2
+
+            # blend them smoothly
+            U[i] = U0 * envelope * core
+        end
+    end
+    
+    # finding streamfunction from U
+    ψ_bg = -cumtrapz(y, U) 
+
+    upper_jet_bound = 1
+    lower_jet_bound = Ny
+
+   return ψ_bg, U ./ maximum(U), upper_jet_bound, lower_jet_bound
+end
+
 ################################################################################
 # Functions for restart and building psi of time
 ################################################################################
@@ -423,6 +455,8 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
 
         prod_diag = zeros(2, n_diag)
 
+	zm_diag = zeros(4, Ny, n_diag)
+
         U_hov_diag = zeros(Ny, n_diag)
 
         diag_cnt = 1
@@ -522,6 +556,8 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
             zonal_EAPE_diag[diag_cnt] = mean((0.5 * (ψ1_bar[save_ind_start:save_ind_end] .- ψ2_bar[save_ind_start:save_ind_end])).^2)
 
             prod_diag[1, diag_cnt], prod_diag[2, diag_cnt], na1, na2 = energy_budget(q1_bar, q2_bar, q1_prime, q2_prime, save_ind_start, save_ind_end, 0.0, 0.0, 0.0, 0.0)
+
+	    zm_diag[1, :, diag_cnt], zm_diag[2, :, diag_cnt], zm_diag[3, :, diag_cnt], zm_diag[4, :, diag_cnt] = zonal_mean_energy_budget(q1_bar, q2_bar, q1_prime, q2_prime, save_ind_start, save_ind_end)
 
             U_hov_diag[:, diag_cnt] = mean(u_from_psi(ψ1_bar' .+ ψ1_prime)[1], dims=1)
 
