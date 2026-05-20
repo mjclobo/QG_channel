@@ -564,7 +564,7 @@ function zonal_mean_energy_budget(q1_bar, q2_bar, q1_prime, q2_prime, save_ind_s
 
     CBT = u1_bar .* d_dy(mean(u1_prime .* v1_prime, dims=1), dy) .+ u2_bar .* d_dy(mean(u2_prime .* v2_prime, dims=1), dy)
 
-    therm_damping = - α * F1 .* ((ψ1_bar .- ψ2_bar) ./ 2, dims=1) 
+    therm_damping = - α * F1 .* ((ψ1_bar .- ψ2_bar) ./ 2) 
 
     mech_damping = -  r .* u2_bar
 
