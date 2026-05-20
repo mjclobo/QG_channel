@@ -600,7 +600,7 @@ function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ
         # "q1Jbar" => q1Jbar, "q2Jbar" => q2Jbar, "q1τ" => q1τ, "q2τ" => q2τ,
         # "rq2ζ2" => rq2ζ2)
         jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => Array(EAPE_diag), "EAPE_diag2" => Array(EAPE_diag2),
-        "prod_diag" => Array(prod_diag), "U_hov_diag" => Array(U_hov_diag), "zonal_EAPE_diag" => Array(zonal_EAPE_diag), "t" => time_array,
+        "zm_diag" => zm_diag, "prod_diag" => Array(prod_diag), "U_hov_diag" => Array(U_hov_diag), "zonal_EAPE_diag" => Array(zonal_EAPE_diag), "t" => time_array,
         "v1ζ1" => v1ζ1./diag_cntr, "v2ζ2" => v2ζ2./diag_cntr, "dy_v_qpsq1" => dy_v_qpsq1 ./diag_cntr,
         "dy_v_qpsq2" => dy_v_qpsq2 ./diag_cntr, "v1τ" => v1τ./diag_cntr, "v2τ" => v2τ./diag_cntr,
         "q1Jbar" => q1Jbar./diag_cntr, "q2Jbar" => q2Jbar./diag_cntr, "q1τ" => q1τ./diag_cntr, "q2τ" => q2τ./diag_cntr,

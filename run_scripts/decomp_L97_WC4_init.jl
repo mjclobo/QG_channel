@@ -23,11 +23,11 @@ using KernelAbstractions
 ################################################################################
 
 Nx = 64
-Ny = 128
+Ny = 320 # 256
 Nz = 2
 
 Lx = 45
-Ly = 90 
+Ly = 225  # 180
 
 # Do not change these vvv
 x = collect(range(0, Lx, Nx))
@@ -92,7 +92,7 @@ else
     exclude_file="decomposed"
 end
 
-src_dir = "/home/matt/Desktop/research/QG/QG_channel/src/"
+src_dir = "/home/matt/Desktop/research/QG/2LQG/HeldLobo_proj/QG_channel/src/"
 src_files = readdir(src_dir)
 for file in src_files
     if startswith(file, exclude_file)
@@ -109,13 +109,13 @@ end
 # Define background flow profile
 ################################################################################
 
-trans = 0.0
+trans = 1.0
 
-WC = 7 # 11 is 19.75 if you want U0=1 for trans=1.0 # 13 (7, 24.75); (8, 26.75); (9, 28.75); (10, 30.75); (11, 32.75)
+WC = 50.0 # 11 is 19.75 if you want U0=1 for trans=1.0 # 13 (7, 24.75); (8, 26.75); (9, 28.75); (10, 30.75); (11, 32.75)
 T = 0.0  # 42.5 for 16; 32.5 for 11; 36.75 for WC=13
 
-ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC) # ; σ=20.0)
-# ψ1_bg, U_bg, zone_start_ind, zone_end_ind = blended_transport_jet(y; T=T, W=WC, trans=trans)
+# ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC; σ=20.0)
+ψ1_bg, U_bg, zone_start_ind, zone_end_ind = blended_transport_jet(y; T=T, W=WC, trans=trans)
 # ψ1_bg, U_bg, zone_start_ind, zone_end_ind = double_jet(y; sep=6, σ=5.0)
 
 # ψ1_bg = ψ1_bg
@@ -156,7 +156,7 @@ r = 0.1         # Ekman friction (1/s)  L97 uses 0.1
 
 # this saves meridional bands (full zonal extent) of i) ψ1, ii) ψ2, and iii) t
 save_bool = true
-save_path = "/home/matt/Desktop/research/QG/QG_channel_output/data/WC_init_beta" * string(beta) * "_WC" * string(WC) * "_trans" * string(trans) * "_r" * string(r) * "/"  # meridional width of domain that is saved; max of 1 will save whole meridional extent of domain
+save_path = "/home/matt/Desktop/research/QG/2LQG/HeldLobo_proj/QG_channel_output/data/WC_init_beta" * string(beta) * "_WC" * string(WC) * "_trans" * string(trans) * "_r" * string(r) * "/"  # meridional width of domain that is saved; max of 1 will save whole meridional extent of domain
 save_every = round(Int,nt/20)      # period of save frequency
 
 
@@ -168,11 +168,11 @@ save_last = true
 # this plots panels at fig_path; the plot function (defined in output_fcns.jl) can be modified to be whatever you want to see
 plot_basic_bool = true
 plot_BCI_bool = false
-fig_path = "/home/matt/Desktop/research/QG/QG_channel_output/anim/WC_init_beta" * string(beta) * "_WC" * string(WC) * "_trans" * string(trans) * "_r" * string(r) * "/"
+fig_path = "/home/matt/Desktop/research/QG/2LQG/HeldLobo_proj/QG_channel_output/anim/WC_init_beta" * string(beta) * "_WC" * string(WC) * "_trans" * string(trans) * "_r" * string(r) * "/"
 plot_every = round(Int,nt/60)      # period of plot output frequency
 
 # diagnostics
-diag_dir = "/home/matt/Desktop/research/QG/QG_channel_output/diagnostics/WC_beta" * string(beta) * "_WC" * string(WC) * "_trans" * string(trans) * "_r" * string(r) * "/"
+diag_dir = "/home/matt/Desktop/research/QG/2LQG/HeldLobo_proj/QG_channel_output/diagnostics/WC_beta" * string(beta) * "_WC" * string(WC) * "_trans" * string(trans) * "_r" * string(r) * "/"
 diag_bool = true
 nrg_diag_bool = true
 diag_every = round(Int,nt/100)      # period of plot output frequency
@@ -215,7 +215,7 @@ isdir(save_path) || mkpath(save_path)
 isdir(fig_path) || mkpath(fig_path)
 isdir(diag_dir) || mkpath(diag_dir)
 
-run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind, t_start_diag=250)
+# run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind, t_start_diag=250)
 
 
 # now you can run L97_WC4_SS.jl to calculate steady-state turbulent statistics
