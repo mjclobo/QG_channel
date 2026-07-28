@@ -2,158 +2,97 @@
 ################################################################################
 # RK4 time steppers
 ################################################################################
+function rk4_coupled(model::QGModel, ψ_diff_bg, topo_PV, wind_curl, q1_STJ_target, q2_STJ_target, dt)
+    s = model.state
 
-function rk4_step!(qh, t, dt,
-    rhs!, ν, r, τ, f0, kx, ky, params)
+    # CRITICAL FIX: We must filter the state *before* taking our base copies, 
+    # otherwise grid-scale noise is re-injected at the end of every RK4 step!
+    filter_qprime!(s.q1_prime)
+    filter_qprime!(s.q2_prime)
 
-    K1 = similar(qh)
-    K2 = similar(qh)
-    K3 = similar(qh)
-    K4 = similar(qh)
-    qtmp = similar(qh)
+    # Save the original (now properly filtered) state at the start of the timestep.
+    q1p_orig = copy(s.q1_prime)
+    q2p_orig = copy(s.q2_prime)
+    q1b_orig = copy(s.q1_bar)
+    q2b_orig = copy(s.q2_bar)
 
-    rhs!(K1, qh, t, ν, r, τ, f0, kx, ky, params)
+    # Stage 1
+    k1p1, k1p2 = rhs_prime(model, ψ_diff_bg, topo_PV)
+    k1b1, k1b2 = rhs_bar(model, ψ_diff_bg, topo_PV, wind_curl, q1_STJ_target, q2_STJ_target)
 
-    @. qtmp = qh + 0.5*dt*K1
-    rhs!(K2, qtmp, t + 0.5*dt, ν, r, τ, f0, kx, ky, params)
+    # Stage 2
+    s.q1_prime .= q1p_orig .+ 0.5 .* dt .* k1p1
+    s.q2_prime .= q2p_orig .+ 0.5 .* dt .* k1p2
+    s.q1_bar   .= q1b_orig .+ 0.5 .* dt .* k1b1
+    s.q2_bar   .= q2b_orig .+ 0.5 .* dt .* k1b2
+    k2p1, k2p2 = rhs_prime(model, ψ_diff_bg, topo_PV)
+    k2b1, k2b2 = rhs_bar(model, ψ_diff_bg, topo_PV, wind_curl, q1_STJ_target, q2_STJ_target)
 
-    @. qtmp = qh + 0.5*dt*K2
-    rhs!(K3, qtmp, t + 0.5*dt, ν, r, τ, f0, kx, ky, params)
+    # Stage 3
+    s.q1_prime .= q1p_orig .+ 0.5 .* dt .* k2p1
+    s.q2_prime .= q2p_orig .+ 0.5 .* dt .* k2p2
+    s.q1_bar   .= q1b_orig .+ 0.5 .* dt .* k2b1
+    s.q2_bar   .= q2b_orig .+ 0.5 .* dt .* k2b2
+    k3p1, k3p2 = rhs_prime(model, ψ_diff_bg, topo_PV)
+    k3b1, k3b2 = rhs_bar(model, ψ_diff_bg, topo_PV, wind_curl, q1_STJ_target, q2_STJ_target)
 
-    @. qtmp = qh + dt*K3
-    rhs!(K4, qtmp, t + dt, ν, r, τ, f0, kx, ky, params)
+    # Stage 4
+    s.q1_prime .= q1p_orig .+ dt .* k3p1
+    s.q2_prime .= q2p_orig .+ dt .* k3p2
+    s.q1_bar   .= q1b_orig .+ dt .* k3b1
+    s.q2_bar   .= q2b_orig .+ dt .* k3b2
+    k4p1, k4p2 = rhs_prime(model, ψ_diff_bg, topo_PV)
+    k4b1, k4b2 = rhs_bar(model, ψ_diff_bg, topo_PV, wind_curl, q1_STJ_target, q2_STJ_target)
 
-    @. qh += dt * (K1 + 2K2 + 2K3 + K4)/6
+    # Final Combination
+    s.q1_prime .= q1p_orig .+ (dt / 6.0) .* (k1p1 .+ 2.0 .* k2p1 .+ 2.0 .* k3p1 .+ k4p1)
+    s.q2_prime .= q2p_orig .+ (dt / 6.0) .* (k1p2 .+ 2.0 .* k2p2 .+ 2.0 .* k3p2 .+ k4p2)
+    s.q1_bar   .= q1b_orig .+ (dt / 6.0) .* (k1b1 .+ 2.0 .* k2b1 .+ 2.0 .* k3b1 .+ k4b1)
+    s.q2_bar   .= q2b_orig .+ (dt / 6.0) .* (k1b2 .+ 2.0 .* k2b2 .+ 2.0 .* k3b2 .+ k4b2)
 
     return nothing
 end
 
 
-function rk4_BT(qh, t, dt)
-    k1qh = rhs(qh, t)
-    k2qh = rhs(qh .+ 0.5dt .* k1qh, t+0.5*dt)
-    k3qh = rhs(qh .+ 0.5dt .* k2qh, t+0.5*dt)
-    k4qh = rhs(qh .+ dt .* k3qh, t+dt)
+###############################################################################
+## fixed BG state
+##############################################################################
+function rk4_fixed_bg(model::QGModel, ψ_bg, q1_bg_grad, q2_bg_grad, topo_PV, dt)
+    s = model.state
 
-    qh_new = qh .+ dt/6 .* (k1qh .+ 2k2qh .+ 2k3qh .+ k4qh)
-    return qh_new
+    # 1. Filter the state before taking base copies to keep noise down
+    filter_qprime!(s.q1_prime)
+    filter_qprime!(s.q2_prime)
+
+    # 2. Save the original perturbation state at the start of the timestep
+    q1p_orig = copy(s.q1_prime)
+    q2p_orig = copy(s.q2_prime)
+
+    # --- Stage 1 ---
+    k1p1, k1p2 = rhs_full(model, ψ_bg, q1_bg_grad, q2_bg_grad, topo_PV)
+
+    # --- Stage 2 ---
+    s.q1_prime .= q1p_orig .+ 0.5 .* dt .* k1p1
+    s.q2_prime .= q2p_orig .+ 0.5 .* dt .* k1p2
+    k2p1, k2p2 = rhs_full(model, ψ_bg, q1_bg_grad, q2_bg_grad, topo_PV)
+
+    # --- Stage 3 ---
+    s.q1_prime .= q1p_orig .+ 0.5 .* dt .* k2p1
+    s.q2_prime .= q2p_orig .+ 0.5 .* dt .* k2p2
+    k3p1, k3p2 = rhs_full(model, ψ_bg, q1_bg_grad, q2_bg_grad, topo_PV)
+
+    # --- Stage 4 ---
+    s.q1_prime .= q1p_orig .+ dt .* k3p1
+    s.q2_prime .= q2p_orig .+ dt .* k3p2
+    k4p1, k4p2 = rhs_full(model, ψ_bg, q1_bg_grad, q2_bg_grad, topo_PV)
+
+    # --- Final Combination ---
+    s.q1_prime .= q1p_orig .+ (dt / 6.0) .* (k1p1 .+ 2.0 .* k2p1 .+ 2.0 .* k3p1 .+ k4p1)
+    s.q2_prime .= q2p_orig .+ (dt / 6.0) .* (k1p2 .+ 2.0 .* k2p2 .+ 2.0 .* k3p2 .+ k4p2)
+
+    return nothing
 end
 
-function rk4_BT_FD(q, t, dt)
-    k1qh = rhs_BT_FD(q, t)
-    k2qh = rhs_BT_FD(q .+ 0.5dt .* k1qh, t+0.5*dt)
-    k3qh = rhs_BT_FD(q .+ 0.5dt .* k2qh, t+0.5*dt)
-    k4qh = rhs_BT_FD(q .+ dt .* k3qh, t+dt)
-
-    q_new = q .+ dt/6 .* (k1qh .+ 2k2qh .+ 2k3qh .+ k4qh)
-    return q_new
-end
-
-function rk4_BT_FD!(q, qnew, k1, k2, k3, k4, workspace, params, dt, t)
-    # workspace is a NamedTuple of (ψ_v, ψ_v_vec, Q, …)
-    k1 .= rhs_BT_FD!(k1, q, workspace..., params, t)
-
-    @. qnew = q + 0.5*dt*k1
-    k2 .= rhs_BT_FD!(k2, qnew, workspace..., params, t + 0.5dt)
-
-    @. qnew = q + 0.5*dt*k2
-    k3 .= rhs_BT_FD!(k3, qnew, workspace..., params, t + 0.5dt)
-
-    @. qnew = q + dt*k3
-    k4 .= rhs_BT_FD!(k4, qnew, workspace..., params, t + dt)
-
-    @. q = q + dt/6*(k1 + 2k2 + 2k3 + k4)
-    return q
-end
-
-
-function rk4(q1, q2, dt)
-    k1q1, k1q2 = rhs(q1, q2)
-    k2q1, k2q2 = rhs(q1 .+ 0.5dt .* k1q1, q2 .+ 0.5dt .* k1q2)
-    k3q1, k3q2 = rhs(q1 .+ 0.5dt .* k2q1, q2 .+ 0.5dt .* k2q2)
-    k4q1, k4q2 = rhs(q1 .+ dt .* k3q1, q2 .+ dt .* k3q2)
-
-    q1_new = q1 .+ dt/6 .* (k1q1 .+ 2k2q1 .+ 2k3q1 .+ k4q1)
-    q2_new = q2 .+ dt/6 .* (k1q2 .+ 2k2q2 .+ 2k3q2 .+ k4q2)
-    return q1_new, q2_new
-end
-
-function rk4_prime(q1_prime, q2_prime, q1_bar, q2_bar, dt)
-    k1q1, k1q2 = rhs_prime(q1_prime, q2_prime, q1_bar, q2_bar)
-    k2q1, k2q2 = rhs_prime(q1_prime .+ 0.5dt .* k1q1, q2_prime .+ 0.5dt .* k1q2, q1_bar, q2_bar)
-    k3q1, k3q2 = rhs_prime(q1_prime .+ 0.5dt .* k2q1, q2_prime .+ 0.5dt .* k2q2, q1_bar, q2_bar)
-    k4q1, k4q2 = rhs_prime(q1_prime .+ dt .* k3q1, q2_prime .+ dt .* k3q2, q1_bar, q2_bar)
-
-    q1_new = q1_prime .+ dt/6 .* (k1q1 .+ 2k2q1 .+ 2k3q1 .+ k4q1)
-    q2_new = q2_prime .+ dt/6 .* (k1q2 .+ 2k2q2 .+ 2k3q2 .+ k4q2)
-    return q1_new, q2_new
-end
-
-function rk4_bar(q1_bar, q2_bar, q1_prime, q2_prime, dt)
-    k1q1, k1q2 = rhs_bar(q1_bar, q2_bar, q1_prime, q2_prime)
-    k2q1, k2q2 = rhs_bar(q1_bar .+ 0.5dt .* k1q1, q2_bar .+ 0.5dt .* k1q2, q1_prime, q2_prime)
-    k3q1, k3q2 = rhs_bar(q1_bar .+ 0.5dt .* k2q1, q2_bar .+ 0.5dt .* k2q2, q1_prime, q2_prime)
-    k4q1, k4q2 = rhs_bar(q1_bar .+ dt .* k3q1, q2_bar .+ dt .* k3q2, q1_prime, q2_prime)
-
-    q1_new = q1_bar .+ dt/6 .* (k1q1 .+ 2k2q1 .+ 2k3q1 .+ k4q1)
-    q2_new = q2_bar .+ dt/6 .* (k1q2 .+ 2k2q2 .+ 2k3q2 .+ k4q2)
-    return q1_new, q2_new
-end
-
-function rk4_coupled(q1_prime, q2_prime, q1_bar, q2_bar, ψ_diff_bg, dt)
-    """
-    Fully coupled RK4 step for (q_prime, q_bar) system.
-    
-    Parameters
-    ----------
-    q1_prime, q2_prime : arrays
-        Perturbation PV at current time.
-    q1_bar, q2_bar : arrays
-        Zonal-mean PV at current time.
-    dt : float
-        Timestep.
-    
-    Returns
-    -------
-    Updated (q1_prime, q2_prime, q1_bar, q2_bar) after one dt
-    """
-    
-    # Stage 1
-    k1p1, k1p2 = rhs_prime(q1_prime, q2_prime, q1_bar, q2_bar, ψ_diff_bg)
-    k1b1, k1b2 = rhs_bar(q1_bar, q2_bar, q1_prime, q2_prime, ψ_diff_bg)
-    
-    # Stage 2
-    q1p_temp = q1_prime + 0.5*dt*k1p1
-    q2p_temp = q2_prime + 0.5*dt*k1p2
-    q1b_temp = q1_bar   + 0.5*dt*k1b1
-    q2b_temp = q2_bar   + 0.5*dt*k1b2
-    k2p1, k2p2 = rhs_prime(q1p_temp, q2p_temp, q1b_temp, q2b_temp, ψ_diff_bg)
-    k2b1, k2b2 = rhs_bar(q1b_temp, q2b_temp, q1p_temp, q2p_temp, ψ_diff_bg)
-    
-    # Stage 3
-    q1p_temp = q1_prime + 0.5*dt*k2p1
-    q2p_temp = q2_prime + 0.5*dt*k2p2
-    q1b_temp = q1_bar   + 0.5*dt*k2b1
-    q2b_temp = q2_bar   + 0.5*dt*k2b2
-    k3p1, k3p2 = rhs_prime(q1p_temp, q2p_temp, q1b_temp, q2b_temp, ψ_diff_bg)
-    k3b1, k3b2 = rhs_bar(q1b_temp, q2b_temp, q1p_temp, q2p_temp, ψ_diff_bg)
-    
-    # Stage 4
-    q1p_temp = q1_prime + dt*k3p1
-    q2p_temp = q2_prime + dt*k3p2
-    q1b_temp = q1_bar   + dt*k3b1
-    q2b_temp = q2_bar   + dt*k3b2
-    k4p1, k4p2 = rhs_prime(q1p_temp, q2p_temp, q1b_temp, q2b_temp, ψ_diff_bg)
-    k4b1, k4b2 = rhs_bar(q1b_temp, q2b_temp, q1p_temp, q2p_temp, ψ_diff_bg)
-    
-    # Combine stages
-    q1_prime_new = q1_prime + dt/6 .* (k1p1 + 2*k2p1 + 2*k3p1 + k4p1)
-    q2_prime_new = q2_prime + dt/6 .* (k1p2 + 2*k2p2 + 2*k3p2 + k4p2)
-    q1_bar_new   = q1_bar   + dt/6 .* (k1b1 + 2*k2b1 + 2*k3b1 + k4b1)
-    q2_bar_new   = q2_bar   + dt/6 .* (k1b2 + 2*k2b2 + 2*k3b2 + k4b2)
-    
-    return q1_prime_new, q2_prime_new, q1_bar_new, q2_bar_new
-end
 
 ################################################################################
 # RK4 time stepper w/ integrating factor

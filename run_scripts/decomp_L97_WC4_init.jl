@@ -23,11 +23,11 @@ using KernelAbstractions
 ################################################################################
 
 Nx = 64
-Ny = 320 # 256
+Ny = 128 # 256
 Nz = 2
 
-Lx = 45
-Ly = 225  # 180
+Lx = 64
+Ly = 128  # 180
 
 # Do not change these vvv
 x = collect(range(0, Lx, Nx))
@@ -111,11 +111,11 @@ end
 
 trans = 1.0
 
-WC = 50.0 # 11 is 19.75 if you want U0=1 for trans=1.0 # 13 (7, 24.75); (8, 26.75); (9, 28.75); (10, 30.75); (11, 32.75)
+WC = 35.0 # 11 is 19.75 if you want U0=1 for trans=1.0 # 13 (7, 24.75); (8, 26.75); (9, 28.75); (10, 30.75); (11, 32.75)
 T = 0.0  # 42.5 for 16; 32.5 for 11; 36.75 for WC=13
 
-# ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC; σ=20.0)
-ψ1_bg, U_bg, zone_start_ind, zone_end_ind = blended_transport_jet(y; T=T, W=WC, trans=trans)
+ψ1_bg, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC; σ=5.0)
+# ψ1_bg, U_bg, zone_start_ind, zone_end_ind = blended_transport_jet(y; T=T, W=WC, trans=trans)
 # ψ1_bg, U_bg, zone_start_ind, zone_end_ind = double_jet(y; sep=6, σ=5.0)
 
 # ψ1_bg = ψ1_bg
@@ -149,6 +149,23 @@ N_steps = 10.0
 
 r = 0.1         # Ekman friction (1/s)  L97 uses 0.1
 α = 30^-1        # Thermal damping (1/s)
+
+
+#################################################################################
+## TOPOGRAPHY
+##################################################################################
+# Gaussian bump parameters
+H0 = 0.2*(H1+H2)         # Maximum height of the bump
+x0 = Lx / 2      # Center x-coordinate
+y0 = 0.0         # Center y-coordinate
+σx = 15.0         # Spread in the x-direction
+σy = 15.0         # Spread in the y-direction
+
+# Generate the 2D grid using broadcasting
+# x is a column vector (Nx,), y' makes y a row vector (1, Ny)
+eta_b = @. H0 * exp(-((x - x0)^2 / (2 * σx^2) + (y' - y0)^2 / (2 * σy^2)))
+
+topo_PV = f0 * eta_b / H2
 
 ################################################################################
 # Define paths for saving streamfunction files and figures; and frequency of output
@@ -215,7 +232,7 @@ isdir(save_path) || mkpath(save_path)
 isdir(fig_path) || mkpath(fig_path)
 isdir(diag_dir) || mkpath(diag_dir)
 
-# run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind, t_start_diag=250)
+run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; save_ind_start=zone_start_ind, save_ind_end=zone_end_ind, t_start_diag=250, topo_PV=topo_PV)
 
 
 # now you can run L97_WC4_SS.jl to calculate steady-state turbulent statistics

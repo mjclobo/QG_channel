@@ -1,4 +1,73 @@
+#######################################################################
+## Helpful general structs
+#######################################################################
 
+# 1. Define PVBarSolver2L FIRST so QGOperators knows what it is!
+struct PVBarSolver2L
+    L::Matrix{Float64}        # 1D Laplacian
+    F1::Float64
+    F2::Float64
+    luA::LU                   # LU factorization of 2-layer operator
+    Ny::Int
+end
+
+# 2. The Evolving State
+mutable struct QGState
+    # Prognostic PV
+    q1_prime::Matrix{Float64}
+    q2_prime::Matrix{Float64}
+    q1_bar::Vector{Float64}
+    q2_bar::Vector{Float64}
+    
+    # Diagnostic Streamfunctions
+    ψ1_prime::Matrix{Float64}
+    ψ2_prime::Matrix{Float64}
+    ψ1_bar::Vector{Float64}
+    ψ2_bar::Vector{Float64}
+end
+
+# 3. The Static Operators and Buffers
+# We use type parameters {TLU, T1D, T2D} because functions and LU 
+# factorizations have complex types. This guarantees type-stability.
+struct QGOperators{TLU, T1D, T2D}
+    solver2L::PVBarSolver2L
+    A_lu::TLU
+    rhs_pa::Vector{Float64}  # Pre-allocated buffer for RHS
+    ψ_vec::Vector{Float64}   # Pre-allocated buffer for Psi
+    L1D::T1D                 # 1D Laplacian function/matrix
+    L2D::T2D                 # 2D Laplacian function/matrix
+
+    # Pre-allocated 2D Jacobian buffers ---
+    J1_buffer::Matrix{Float64}
+    J2_buffer::Matrix{Float64}
+end
+
+# 4. The Parent Wrapper
+struct QGModel{TLU, T1D, T2D}
+    state::QGState
+    ops::QGOperators{TLU, T1D, T2D}
+    # You could also add a `grid` or `params` struct here!
+end
+
+Base.@kwdef struct OutputConfig
+    # Booleans
+    save_bool::Bool = true
+    save_last::Bool = true
+    plot_basic_bool::Bool = true
+    plot_BCI_bool::Bool = false
+    diag_bool::Bool = true
+    nrg_diag_bool::Bool = true
+
+    # Frequencies
+    save_every::Int
+    plot_every::Int
+    diag_every::Int
+
+    # Paths
+    save_path::String
+    fig_path::String
+    diag_dir::String
+end
 
 ################################################################################
 # Operations
@@ -95,24 +164,10 @@ end
 
 
 
-# Helper function to handle 1D and 2D arrays
-function zero_boundaries!(arr)
-    if ndims(arr) == 2
-        # For 2D Matrix (q_prime)
-        arr[:, 1] .= 0.0
-        arr[:, end] .= 0.0
-    else
-        # For 1D Vector (q_bar)
-        arr[1] = 0.0
-        arr[end] = 0.0
-    end
-end
-
-
-function hyperviscous(q; L = L2D)
-    # 1. First Laplacian ∇²q
+function hyperviscous(psi; L = L2D)
+    # 1. First Laplacian ∇²psi
     # If L is the "Consistent" matrix, it already handles the "Mop"
-    lap1 = L(q)
+    lap1 = L(psi)
     
     # 2. Second Laplacian ∇⁴q
     # This enforces the Feldstein & Held intermediate zeroing
@@ -140,40 +195,24 @@ function hyperviscous(q; L = L2D)
 end
 
 ################################################################################
-# define operators used throughout
-################################################################################
-
-# function for Laplacian function, L2D(ψ)
-# L2D = laplacian_operator_free_slip_y(Nx, Ny, dx, dy)
-L2D = build_consistent_2D_Laplacian(Nx, Ny, dx, dy)
-
-L1D = build_Laplacian_Neumann(Ny, dy) # build_Laplacian_with_lower_bc(Ny, dy)
-
-
-################################################################################
 #  Arakawa Jacobian
 ################################################################################
-
-function arakawa_jacobian(a, b, dx, dy)
+function arakawa_jacobian!(J::Matrix{Float64}, a, b, dx, dy)
     Nx, Ny = size(a)
-    J = zeros(Float64, Nx, Ny)
     denom = 4dx * dy
 
-    ip = [i == Nx ? 1 : i + 1 for i in 1:Nx]
-    im = [i == 1  ? Nx : i - 1 for i in 1:Nx]
-
-    @threads for i in 1:Nx
-        # ONLY loop from 2 to Ny-1. 
-        # The wall values (1 and Ny) remain 0.0.
-        @inbounds for j in 2:Ny-1
+    # Pre-calculate indices to avoid allocating arrays inside the function
+    @inbounds for i in 1:Nx
+        i_p = i == Nx ? 1 : i + 1
+        i_m = i == 1  ? Nx : i - 1
+        
+        # We only loop the interior y-indices
+        for j in 2:Ny-1
             j_p, j_m = j + 1, j - 1
-            i_p, i_m = ip[i], im[i]
 
-            # J1: Standard
             j1 = ((a[i_p, j] - a[i_m, j]) / 2dx) * ((b[i, j_p] - b[i, j_m]) / 2dy) -
                  ((a[i, j_p] - a[i, j_m]) / 2dy) * ((b[i_p, j] - b[i_m, j]) / 2dx)
 
-            # J2 & J3: Flux forms
             j2 = (a[i_p, j] * (b[i_p, j_p] - b[i_p, j_m]) - 
                   a[i_m, j] * (b[i_m, j_p] - b[i_m, j_m]) - 
                   a[i, j_p] * (b[i_p, j_p] - b[i_m, j_p]) + 
@@ -187,17 +226,13 @@ function arakawa_jacobian(a, b, dx, dy)
             J[i, j] = (j1 + j2 + j3) / 3.0
         end
     end
-    return J
 end
-
 
 ################################################################################
 #  2LQG main functions
 ################################################################################
 
-
 function compute_qg_pv_bar(ψ1, ψ2; lap_op=L1D)
-
     Ny = length(ψ1)
 
     q1 = zeros(Ny)
@@ -209,17 +244,15 @@ function compute_qg_pv_bar(ψ1, ψ2; lap_op=L1D)
     return q1, q2
 end
 
-
 function compute_qg_pv_prime(ψ1::Array{Float64,2}, ψ2::Array{Float64,2}; lap_op=L2D)
-
     Nx, Ny = size(ψ1)
 
     q1 = zeros(Nx, Ny)
     q2 = zeros(Nx, Ny)
 
     # Compute PV; note that we don't add beta, as this makes PV inversion inconsistent
-    q1 = lap_op(ψ1) .+ F1 .* (ψ2 .- ψ1) ./ 2 # 
-    q2 = lap_op(ψ2) .+ F2 .* (ψ1 .- ψ2) ./ 2  # 
+    q1 = lap_op(ψ1) .+ F1 .* (ψ2 .- ψ1) ./ 2  
+    q2 = lap_op(ψ2) .+ F2 .* (ψ1 .- ψ2) ./ 2  
 
     return q1, q2
 end
@@ -245,10 +278,8 @@ function precompute_qg_operator(Nx::Int, Ny::Int, F1::Float64, F2::Float64, dx::
             if j == 1 || j == Ny
                 # --- BOUNDARY ROWS ---
                 # Force ψ1 = 0 and ψ2 = 0 at the walls.
-                # We set the diagonal to 1 and leave coupling blocks as 0.
                 A11[n, n] = 1.0
                 A22[n, n] = 1.0
-                # A12 and A21 rows remain zero here, pinning the layers
             else
                 # --- INTERIOR ROWS ---
                 i_w = (i == 1)  ? Nx : i-1
@@ -290,9 +321,6 @@ function precompute_qg_operator(Nx::Int, Ny::Int, F1::Float64, F2::Float64, dx::
     return A_lu, rhs, ψ_vec
 end
 
-A_lu, rhs_pa, ψ_vec = precompute_qg_operator(Nx, Ny, F1, F2, dx, dy)
-
-
 """
 Solve QG PV inversion using preallocated vectors
 """
@@ -308,7 +336,7 @@ function invert_qg_pv_prime(q1p::Matrix{Float64}, q2p::Matrix{Float64},
         rhs[N+i] = q2p[i]
     end
 
-    # ensures psi=0 at walls
+    # ensures psi_prime=0 at walls
     for i in 1:Nx
         # South Wall (j=1)
         rhs[i] = 0.0           # Layer 1
@@ -327,16 +355,6 @@ function invert_qg_pv_prime(q1p::Matrix{Float64}, q2p::Matrix{Float64},
 
     return ψ1p, ψ2p
 end
-
-
-struct PVBarSolver2L
-    L::Matrix{Float64}       # 1D Laplacian
-    F1::Float64
-    F2::Float64
-    luA::LU                   # LU factorization of 2-layer operator
-    Ny::Int
-end
-
 
 function PVBarSolver2L(Ny::Int, dy::Float64, F1::Float64, F2::Float64)
     inv_dy2 = 1.0 / dy^2
@@ -373,8 +391,6 @@ function PVBarSolver2L(Ny::Int, dy::Float64, F1::Float64, F2::Float64)
     return PVBarSolver2L(L, F1, F2, lu(A), Ny)
 end
 
-solver2L = PVBarSolver2L(Ny, dy, F1, F2)
-
 function invert_qg_pv_bar2L(solver::PVBarSolver2L, q1_bar, q2_bar)
     Ny = solver.Ny
     rhs = vcat(q1_bar, q2_bar)
@@ -396,7 +412,7 @@ end
 
 function filter_qprime!(q)
     # Remove zonal mean; shouldn't have one anyways
-    q .-= mean(q, dims=1)
+    # q .-= mean(q, dims=1)
 
     # Kill x-Nyquist mode (checkerboard)
     q̂ = rfft(q, 1)
@@ -406,69 +422,178 @@ end
 
 
 #####################################################################
+# RHS Tendencies
+#####################################################################
+function rhs_prime(model::QGModel, ψ_diff_bg, topo_PV)
+    # Unpack for cleaner syntax
+    s = model.state
+    o = model.ops
 
-function rhs_prime(q1_prime, q2_prime, q1_bar, q2_bar, ψ_diff_bg)
+    # Invert PV (updates the streamfunctions inside the state struct)
+    s.ψ1_bar, s.ψ2_bar = invert_qg_pv_bar2L(o.solver2L, s.q1_bar, s.q2_bar)
 
-    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
+    filter_qprime!(s.q1_prime)
+    filter_qprime!(s.q2_prime)
 
-    filter_qprime!(q1_prime)
-    filter_qprime!(q2_prime)
+    s.ψ1_prime, s.ψ2_prime = invert_qg_pv_prime(s.q1_prime, s.q2_prime, o.A_lu, o.rhs_pa, o.ψ_vec)
 
-    ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
+
+    # 1. DIAGNOSE BOUNDARY PV (Enforces ∂y q' = 0)
+    # we enforce this bc q' = zeta' @ wall since psi1= 0 = psi2, and we need ∂y zeta' = 0 @ wall
+    s.q1_prime[:, 1] .= s.q1_prime[:, 2]
+    s.q1_prime[:, end] .= s.q1_prime[:, end-1]
+    s.q2_prime[:, 1] .= s.q2_prime[:, 2]
+    s.q2_prime[:, end] .= s.q2_prime[:, end-1]
+
 
     # 1. Full Advection
-    J1_tot = arakawa_jacobian(ψ1_bar' .+ ψ1_prime, q1_bar' .+ q1_prime, dx, dy)
-    J2_tot = arakawa_jacobian(ψ2_bar' .+ ψ2_prime, q2_bar' .+ q2_prime, dx, dy)
+    arakawa_jacobian!(o.J1_buffer, s.ψ1_bar' .+ s.ψ1_prime, s.q1_bar' .+ s.q1_prime, dx, dy)
+    arakawa_jacobian!(o.J2_buffer, s.ψ2_bar' .+ s.ψ2_prime, s.q2_bar' .+ s.q2_prime .+ topo_PV, dx, dy)
     
-    # 2. Subtract zonal mean of the Jacobian to keep it a "perturbation"
-    # This prevents the streaks!
-    dq1dt = -(J1_tot .- mean(J1_tot, dims=1)) .- beta .* u_from_psi(ψ1_prime)[2]
-    dq2dt = -(J2_tot .- mean(J2_tot, dims=1)) .- beta .* u_from_psi(ψ2_prime)[2]
+    # 2. Subtract zonal mean using the buffers
+    dq1dt = -(o.J1_buffer .- mean(o.J1_buffer, dims=1)) .- beta .* u_from_psi(s.ψ1_prime)[2]
+    dq2dt = -(o.J2_buffer .- mean(o.J2_buffer, dims=1)) .- beta .* u_from_psi(s.ψ2_prime)[2]
 
-    # 3. Damping (Applied to ALL rows including boundaries)
-    dq1dt .-= ν .* hyperviscous(ψ1_prime)
-    dq2dt .-= ν .* hyperviscous(ψ2_prime)
-    dq2dt .-= r .* L2D(ψ2_prime)
+    # 3. Damping
+    dq1dt .-= ν .* hyperviscous(s.ψ1_prime; L=o.L2D)
+    dq2dt .-= ν .* hyperviscous(s.ψ2_prime; L=o.L2D)
+    dq2dt .-= r .* o.L2D(s.ψ2_prime)
 
-    dq1dt .+=  α * F1 .* (ψ1_prime .- ψ2_prime) ./ 2
-    dq2dt .+= -α * F2 .* (ψ1_prime .- ψ2_prime) ./ 2
+    # Decompose the background field to get the 2D perturbation
+    ψ_diff_bg_prime = ψ_diff_bg .- mean(ψ_diff_bg, dims=1)
 
+    # Thermal relaxation (now includes the prime background state)
+    dq1dt .+=  α * F1 .* ((s.ψ1_prime .- s.ψ2_prime) ./ 2 .- ψ_diff_bg_prime ./ 2)
+    dq2dt .+= -α * F2 .* ((s.ψ1_prime .- s.ψ2_prime) ./ 2 .- ψ_diff_bg_prime ./ 2)
+
+    ## STJ relaxation
+    dq1dt .-= α_STJ_1D' .* s.q1_prime
+    dq2dt .-= α_STJ_1D' .* s.q2_prime
+
+    dq1dt[:, 1] .= 0.0; dq1dt[:, end] .= 0.0
+    dq2dt[:, 1] .= 0.0; dq2dt[:, end] .= 0.0
+
+
+    return dq1dt, dq2dt
+end
+
+
+function rhs_bar(model::QGModel, ψ_diff_bg, topo_PV, wind_curl, q1_STJ_target, q2_STJ_target)
+    # Unpack for cleaner syntax
+    s = model.state
+    o = model.ops
+
+    # Invert PV (updates the streamfunctions inside the state struct)
+    s.ψ1_bar, s.ψ2_bar = invert_qg_pv_bar2L(o.solver2L, s.q1_bar, s.q2_bar)
+
+    filter_qprime!(s.q1_prime)
+    filter_qprime!(s.q2_prime)
+
+    s.ψ1_prime, s.ψ2_prime = invert_qg_pv_prime(s.q1_prime, s.q2_prime, o.A_lu, o.rhs_pa, o.ψ_vec)
+
+    inv_dy2 = 1.0 / dy^2
+
+    # 1. DIAGNOSE BOUNDARY MEAN PV (Enforces U = 0)
+    # bc U = 0 implies d_dy(\overline{psi}) = 2 (\overline{psi1 - psi2})/dy^2 using centered difference and ghost point
+    # so that q at the walls is just this term plus the layer-coupling term
+    # Layer 1 South & North
+    s.q1_bar[1] = 2.0 * inv_dy2 * (s.ψ1_bar[2] - s.ψ1_bar[1]) + 
+                  (F1 / 2.0) * (s.ψ2_bar[1] - s.ψ1_bar[1])
+    s.q1_bar[end] = 2.0 * inv_dy2 * (s.ψ1_bar[end-1] - s.ψ1_bar[end]) + 
+                    (F1 / 2.0) * (s.ψ2_bar[end] - s.ψ1_bar[end])
+
+    # Layer 2 South & North
+    s.q2_bar[1] = 2.0 * inv_dy2 * (s.ψ2_bar[2] - s.ψ2_bar[1]) + 
+                  (F2 / 2.0) * (s.ψ1_bar[1] - s.ψ2_bar[1])
+    s.q2_bar[end] = 2.0 * inv_dy2 * (s.ψ2_bar[end-1] - s.ψ2_bar[end]) + 
+                    (F2 / 2.0) * (s.ψ1_bar[end] - s.ψ2_bar[end])
+
+    # Nonlinear advection
+    arakawa_jacobian!(o.J1_buffer, s.ψ1_prime, s.q1_prime, dx, dy)
+    arakawa_jacobian!(o.J2_buffer, s.ψ2_prime, s.q2_prime .+ topo_PV, dx, dy)
+
+    # Calculate the zonal mean of the filled buffers
+    J1_eddy_mean = mean(o.J1_buffer, dims=1)'
+    J2_eddy_mean = mean(o.J2_buffer, dims=1)'
+
+    dq1dt = -J1_eddy_mean
+    dq2dt = -J2_eddy_mean
+
+    # Add 1D Damping
+    dq1dt .-= ν .* hyperviscous(s.ψ1_bar; L=o.L1D)  
+    dq2dt .-= ν .* hyperviscous(s.ψ2_bar; L=o.L1D) 
+    dq2dt .-= r .* o.L1D(s.ψ2_bar)
+
+    # Decompose the background field to get the 1D zonal mean
+    # vec() converts the 1xNy mean into an Ny-element Vector to match ψ1_bar
+    ψ_diff_bg_bar = vec(mean(ψ_diff_bg, dims=1))
+
+    # Thermal relaxation (uses the 1D bar background state)
+    dq1dt .+=  α * F1 .* ((s.ψ1_bar .- s.ψ2_bar) ./ 2 .- ψ_diff_bg_bar ./ 2)
+    dq2dt .+= -α * F2 .* ((s.ψ1_bar .- s.ψ2_bar) ./ 2 .- ψ_diff_bg_bar ./ 2)
+
+    # Surface Wind Forcing ---
+    dq1dt .+= wind_curl
+
+    # STJ momentum forcing
+    dq1dt .-= α_STJ_1D .* (s.q1_bar .- q1_STJ_target)
+    dq2dt .-= α_STJ_1D .* (s.q2_bar .- q2_STJ_target)
+
+    dq1dt[1] = 0.0; dq1dt[end] = 0.0
+    dq2dt[1] = 0.0; dq2dt[end] = 0.0
+
+
+    return dq1dt, dq2dt
+end
+
+###################################################################
+# For a fixed background flow (that still allows the zonal mean state to evolve)
+
+function rhs_full(model::QGModel, ψ_bg, q1_bg_grad, q2_bg_grad, topo_PV)
+    s = model.state
+    o = model.ops
+
+    # 1. Filter the 2D perturbation PV
+    filter_qprime!(s.q1_prime)
+    filter_qprime!(s.q2_prime)
+
+    # 2. Invert 2D perturbation PV to find perturbation streamfunctions
+    s.ψ1_prime, s.ψ2_prime = invert_qg_pv_prime(s.q1_prime, s.q2_prime, o.A_lu, o.rhs_pa, o.ψ_vec)
+
+    Nx, Ny = size(s.q1_prime)
+    dq1dt = zeros(Float64, Nx, Ny)
+    dq2dt = zeros(Float64, Nx, Ny)
+
+    # 3. Layer 1 Jacobians: J(ψ_bg + ψ', q')
+    @. o.J1_buffer = ψ_bg + s.ψ1_prime
+    arakawa_jacobian!(dq1dt, o.J1_buffer, s.q1_prime, dx, dy)
+
+    # 4. Layer 2 Jacobians: J(ψ', q' + topo_PV)
+    # This perfectly captures non-linear eddy advection AND any x/y topographic gradients!
+    @. o.J2_buffer = s.q2_prime + topo_PV        
+    arakawa_jacobian!(dq2dt, s.ψ2_prime, o.J2_buffer, dx, dy)
+
+    # 5. Compute velocities for the explicit linear background gradients
+    _, v1_prime = u_from_psi(s.ψ1_prime)
+    _, v2_prime = u_from_psi(s.ψ2_prime)
+
+    # 6. Apply full background PV gradients (Beta + Jet Curvature + Stretching)
+    # Note: NO separate '- beta * v' line needed anymore, beta is inside these gradients!
+    @. dq1dt = -dq1dt - q1_bg_grad * v1_prime
+    @. dq2dt = -dq2dt - q2_bg_grad * v2_prime
+
+    # 7. Damping
+    dq1dt .-= ν .* hyperviscous(s.ψ1_prime; L=o.L2D)
+    dq2dt .-= ν .* hyperviscous(s.ψ2_prime; L=o.L2D)
+    dq2dt .-= r .* o.L2D(s.ψ2_prime)
+
+    # 8. Boundaries
     dq1dt[:, 1] .= 0.0; dq1dt[:, end] .= 0.0
     dq2dt[:, 1] .= 0.0; dq2dt[:, end] .= 0.0
 
     return dq1dt, dq2dt
 end
 
-
-function rhs_bar(q1_bar, q2_bar, q1_prime, q2_prime, ψ_diff_bg)
-    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
-
-    filter_qprime!(q1_prime)
-    filter_qprime!(q2_prime)
-
-    ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
-
-    # Eddy forcing: the zonal mean of the perturbation Jacobian
-    J1_eddy_mean = mean(arakawa_jacobian(ψ1_prime, q1_prime, dx, dy), dims=1)'
-    J2_eddy_mean = mean(arakawa_jacobian(ψ2_prime, q2_prime, dx, dy), dims=1)'
-
-    dq1dt = -J1_eddy_mean
-    dq2dt = -J2_eddy_mean
-
-    # Add 1D Damping
-    dq1dt .-= ν .* hyperviscous(ψ1_bar; L=L1D)   # twoD=false, L=L1D)
-    dq2dt .-= ν .* hyperviscous(ψ2_bar; L=L1D)  # twoD=false, L=L1D)
-    dq2dt .-= r .* L1D(ψ2_bar)
-
-    # Thermal relaxation
-    dq1dt .+=  α * F1 .* ((ψ1_bar .- ψ2_bar) ./ 2 .- ψ_diff_bg ./ 2)
-    dq2dt .+= -α * F2 .* ((ψ1_bar .- ψ2_bar) ./ 2 .- ψ_diff_bg ./ 2)
-
-    # dq1dt[1] = 0.0; dq1dt[end] = 0.0
-    # dq2dt[1] = 0.0; dq2dt[end] = 0.0
-
-    return dq1dt, dq2dt
-end
 
 ###################################################################################
 ###################################################################################
@@ -484,130 +609,334 @@ function u_from_psi(ψ)
     return u, v
 end
 
+################################################################################
+# Initialize Operators (Moved from mid-file to prevent UndefVarErrors)
+################################################################################
 
-function pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, dy_v_qpsq1, dy_v_qpsq2, q1τ, q2τ, rq2ζ2, γ1_accum, γ2_accum, u1_accum, u2_accum)
+# NOTE: Since these rely on global variables like Nx, Ny, dx, dy, F1, and F2, 
+# they MUST be evaluated *after* those variables are defined in your main script.
+L2D = build_consistent_2D_Laplacian(Nx, Ny, dx, dy)
+L1D = build_Laplacian_Neumann(Ny, dy) 
+solver2L = PVBarSolver2L(Ny, dy, F1, F2)
+A_lu, rhs_pa, ψ_vec = precompute_qg_operator(Nx, Ny, F1, F2, dx, dy)
 
-    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
-    ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
 
-    γ1 = d_dy(reshape(q1_bar, (1, Ny)), dy) .+ beta
-    γ2 = d_dy(reshape(q2_bar, (1, Ny)), dy) .+ beta
 
-    γ1_accum .+= γ1[:]
-    γ2_accum .+= γ2[:]
 
-    ψ1 = ψ1_bar' .+ ψ1_prime
-    ψ2 = ψ2_bar' .+ ψ2_prime
+################################################################3333
+## Diagnostic suite
+##################################################################
 
-    u1, v1 = u_from_psi(ψ1_prime)
-    u2, v2 = u_from_psi(ψ2_prime)
+abstract type AbstractDiagnostic end
 
-    u1t, v1t = u_from_psi(ψ1)
-    u2t, v2t = u_from_psi(ψ2)
+struct DiagnosticSuite
+    diags::Dict{Symbol, AbstractDiagnostic}
+end
 
-    u1_accum .+= mean(u1t, dims=1)[:]
-    u2_accum .+= mean(u2t, dims=1)[:]
+# Constructor for an empty suite
+DiagnosticSuite() = DiagnosticSuite(Dict{Symbol, AbstractDiagnostic}())
 
-    ## -v_i zeta_i
-    v1ζ1 .+= vec(mean(v1 .* L2D(ψ1_prime), dims=1)) # .* γ1
-    v2ζ2 .+= vec(mean(v2 .* L2D(ψ2_prime), dims=1)) # .* γ2
+# Function to add a diagnostic
+function add!(suite::DiagnosticSuite, name::Symbol, diag::AbstractDiagnostic)
+    suite.diags[name] = diag
+end
 
-    ## v_i (pis1 - psi2) / 2
-    v1τ .+= 0.5 * vec(mean(v1 .* (ψ1_prime .- ψ2_prime), dims=1)) # .* γ1
-    v2τ .+= 0.5 * vec(mean(v2 .* (ψ1_prime .- ψ2_prime), dims=1)) # .* γ2
+# Function to run all diagnostics
+function compute_all!(suite::DiagnosticSuite, state, t::Float64, step::Int)
+    for diag in values(suite.diags)
+        compute!(diag, state, t, step)
+    end
+end
 
-    ## q_i J
-    J1_tot = arakawa_jacobian(ψ1, q1_prime, dx, dy) # zeros(Nx, Ny)  # 
-    J2_tot = arakawa_jacobian(ψ2, q2_prime, dx, dy) # zeros(Nx, Ny)  # 
 
-    q1Jbar .+= vec(mean(q1_prime .* J1_tot, dims=1)) # ./ γ1)   # this is equivalent to -\partial_{y} \overbar[v (q')^2 / (2 \gamma)]
-    q2Jbar .+= vec(mean(q2_prime .* J2_tot, dims=1)) # ./ γ2)
+#########################################3
+## EKE
 
-    ## flux form of Jacobian terms (combines them all)
-    dy_v_qpsq1 .+= vec(d_dy(mean(v1 .* (q1_prime.^2), dims=1) , dy)) #  ./ (2 .* γ1))
-    dy_v_qpsq2 .+= vec(d_dy(mean(v2 .* (q2_prime.^2), dims=1) , dy)) #  ./ (2 .* γ2))
+mutable struct EKEDiagnostic <: AbstractDiagnostic
+    frequency::Int
+    counter::Int
+    times::Vector{Float64}
+    data::Matrix{Float64} # 2 x n_diag
+end
 
-    ## r_T q_i tau / gamma_i
-    q1τ .+= vec(mean(v1 .* q1_prime, dims=1))  # vec(mean(α * F1 .* q1_prime .* (ψ1_prime .- ψ2_prime) ./ 2, dims=1)) # ./ γ1)
-    q2τ .+= vec(mean(v2 .* q2_prime, dims=1))  #  vec(mean(α * F1 .* q2_prime .* (ψ1_prime .- ψ2_prime) ./ 2, dims=1) ) # ./ γ2)
+# Constructor handles the math for pre-allocation
+function EKEDiagnostic(nt::Int, dt::Float64, frequency::Int)
+    n_diag = ceil(Int, nt / frequency)
+    return EKEDiagnostic(frequency, 1, zeros(n_diag), zeros(2, n_diag))
+end
 
-    ## -r_B q2 zeta2 / gamma_2   [lower layer only]
-    rq2ζ2 .+= vec(mean(r .* q2_prime .* L2D(ψ2_prime), dims=1)) # ./ γ2)
+# The dispatch for computing EKE
+function compute!(diag::EKEDiagnostic, state::QGState, t::Float64, step::Int)
+    if step % diag.frequency == 0
+        idx = diag.counter
+        
+        u1, v1 = u_from_psi(state.ψ1_prime)
+        u2, v2 = u_from_psi(state.ψ2_prime)
+        
+        diag.data[1, idx] = 0.5 * mean(u1.^2 .+ v1.^2)
+        diag.data[2, idx] = 0.5 * mean(u2.^2 .+ v2.^2)
+        diag.times[idx] = t
+        
+        diag.counter += 1
+    end
+end
 
-    return nothing
+#########################################3
+## Pseudomomentum budget
+mutable struct PseudomomentumDiag <: AbstractDiagnostic
+    frequency::Int
+    counter::Int
+    times::Vector{Float64}
+    
+    # Accumulated 1D arrays
+    v1ζ1::Vector{Float64}
+    v2ζ2::Vector{Float64}
+    v1τ::Vector{Float64}
+    v2τ::Vector{Float64}
+    q1Jbar::Vector{Float64}
+    q2Jbar::Vector{Float64}
+    dy_v_qpsq1::Vector{Float64}
+    dy_v_qpsq2::Vector{Float64}
+    q1τ::Vector{Float64}
+    q2τ::Vector{Float64}
+    rq2ζ2::Vector{Float64}
+    γ1_accum::Vector{Float64}
+    γ2_accum::Vector{Float64}
+    u1_accum::Vector{Float64}
+    u2_accum::Vector{Float64}
+end
+
+# Constructor for pre-allocation
+function PseudomomentumDiag(nt::Int, dt::Float64, frequency::Int, Ny::Int)
+    n_diag = ceil(Int, nt / frequency)
+    return PseudomomentumDiag(
+        frequency, 1, zeros(n_diag),
+        zeros(Ny), zeros(Ny), zeros(Ny), zeros(Ny), zeros(Ny),
+        zeros(Ny), zeros(Ny), zeros(Ny), zeros(Ny), zeros(Ny),
+        zeros(Ny), zeros(Ny), zeros(Ny), zeros(Ny), zeros(Ny)
+    )
+end
+
+function compute!(diag::PseudomomentumDiag, model::QGModel, t::Float64, step::Int)
+    if step % diag.frequency == 0
+        s = model.state
+        o = model.ops
+        
+        diag.times[diag.counter] = t
+        
+        # Background gradients
+        γ1 = d_dy(reshape(s.q1_bar, (1, size(s.q1_bar, 1))), dy) .+ beta
+        γ2 = d_dy(reshape(s.q2_bar, (1, size(s.q2_bar, 1))), dy) .+ beta
+        
+        diag.γ1_accum .+= γ1[:]
+        diag.γ2_accum .+= γ2[:]
+        
+        ψ1 = s.ψ1_bar' .+ s.ψ1_prime
+        ψ2 = s.ψ2_bar' .+ s.ψ2_prime
+        
+        u1, v1 = u_from_psi(s.ψ1_prime)
+        u2, v2 = u_from_psi(s.ψ2_prime)
+        
+        u1t, v1t = u_from_psi(ψ1)
+        u2t, v2t = u_from_psi(ψ2)
+        
+        diag.u1_accum .+= mean(u1t, dims=1)[:]
+        diag.u2_accum .+= mean(u2t, dims=1)[:]
+        
+        # Accumulate fluxes and terms
+        diag.v1ζ1 .+= vec(mean(v1 .* o.L2D(s.ψ1_prime), dims=1))
+        diag.v2ζ2 .+= vec(mean(v2 .* o.L2D(s.ψ2_prime), dims=1))
+        
+        diag.v1τ .+= 0.5 .* vec(mean(v1 .* (s.ψ1_prime .- s.ψ2_prime), dims=1))
+        diag.v2τ .+= 0.5 .* vec(mean(v2 .* (s.ψ1_prime .- s.ψ2_prime), dims=1))
+        
+        J1_tot = arakawa_jacobian(ψ1, s.q1_prime, dx, dy)
+        J2_tot = arakawa_jacobian(ψ2, s.q2_prime, dx, dy)
+        
+        diag.q1Jbar .+= vec(mean(s.q1_prime .* J1_tot, dims=1))
+        diag.q2Jbar .+= vec(mean(s.q2_prime .* J2_tot, dims=1))
+        
+        diag.dy_v_qpsq1 .+= vec(d_dy(mean(v1 .* (s.q1_prime.^2), dims=1), dy))
+        diag.dy_v_qpsq2 .+= vec(d_dy(mean(v2 .* (s.q2_prime.^2), dims=1), dy))
+        
+        diag.q1τ .+= vec(mean(v1 .* s.q1_prime, dims=1))
+        diag.q2τ .+= vec(mean(v2 .* s.q2_prime, dims=1))
+        
+        diag.rq2ζ2 .+= vec(mean(r .* s.q2_prime .* o.L2D(s.ψ2_prime), dims=1))
+        
+        diag.counter += 1
+    end
+end
+
+#########################################3
+## Zonal-mean energy budget
+mutable struct ZonalMeanEnergyDiag <: AbstractDiagnostic
+    frequency::Int
+    counter::Int
+    times::Vector{Float64}
+    
+    # Data matrices: rows=y, cols=time
+    CBC::Matrix{Float64}
+    CBT::Matrix{Float64}
+    therm_damping::Matrix{Float64}
+    mech_damping::Matrix{Float64}
+end
+
+function ZonalMeanEnergyDiag(nt::Int, dt::Float64, frequency::Int, Ny::Int)
+    n_diag = ceil(Int, nt / frequency)
+    return ZonalMeanEnergyDiag(
+        frequency, 1, zeros(n_diag),
+        zeros(Ny, n_diag), zeros(Ny, n_diag), zeros(Ny, n_diag), zeros(Ny, n_diag)
+    )
+end
+
+function compute!(diag::ZonalMeanEnergyDiag, model::QGModel, t::Float64, step::Int)
+    if step % diag.frequency == 0
+        idx = diag.counter
+        s = model.state
+        
+        diag.times[idx] = t
+        
+        ψ1 = s.ψ1_bar' .+ s.ψ1_prime
+        ψ2 = s.ψ2_bar' .+ s.ψ2_prime
+        
+        u1_prime, v1_prime = u_from_psi(s.ψ1_prime)
+        u2_prime, v2_prime = u_from_psi(s.ψ2_prime)
+        
+        u1t, v1t = u_from_psi(ψ1)
+        u2t, v2t = u_from_psi(ψ2)
+        
+        u1_bar = mean(u1t, dims=1)
+        u2_bar = mean(u2t, dims=1)
+        
+        # Populate matrices slice-by-slice
+        diag.CBC[:, idx] .= vec((u1_bar .- u2_bar) .* mean(s.ψ1_prime .* v2_prime, dims=1) ./ 2)
+        
+        diag.CBT[:, idx] .= vec(u1_bar .* d_dy(mean(u1_prime .* v1_prime, dims=1), dy) .+ 
+                                u2_bar .* d_dy(mean(u2_prime .* v2_prime, dims=1), dy))
+        
+        diag.therm_damping[:, idx] .= vec(-α * F1 .* ((s.ψ1_bar .- s.ψ2_bar) ./ 2))
+        
+        diag.mech_damping[:, idx] .= vec(-r .* u2_bar)
+        
+        diag.counter += 1
+    end
+end
+
+#########################################3
+## BC zone-averaged energy budget
+mutable struct ScalarEnergyDiag <: AbstractDiagnostic
+    frequency::Int
+    counter::Int
+    times::Vector{Float64}
+    ind_start::Int
+    ind_end::Int
+    
+    # Time series of domain-averaged scalars
+    CBC::Vector{Float64}
+    CBT::Vector{Float64}
+    therm_damping::Vector{Float64}
+    mech_damping::Vector{Float64}
+end
+
+function ScalarEnergyDiag(nt::Int, dt::Float64, frequency::Int, ind_start::Int, ind_end::Int)
+    n_diag = ceil(Int, nt / frequency)
+    return ScalarEnergyDiag(
+        frequency, 1, zeros(n_diag), ind_start, ind_end,
+        zeros(n_diag), zeros(n_diag), zeros(n_diag), zeros(n_diag)
+    )
+end
+
+function compute!(diag::ScalarEnergyDiag, model::QGModel, t::Float64, step::Int)
+    if step % diag.frequency == 0
+        idx = diag.counter
+        s = model.state
+        
+        diag.times[idx] = t
+        
+        ψ1 = s.ψ1_bar' .+ s.ψ1_prime
+        ψ2 = s.ψ2_bar' .+ s.ψ2_prime
+        
+        u1_prime, v1_prime = u_from_psi(s.ψ1_prime)
+        u2_prime, v2_prime = u_from_psi(s.ψ2_prime)
+        
+        u1t, v1t = u_from_psi(ψ1)
+        u2t, v2t = u_from_psi(ψ2)
+        
+        u1_bar = mean(u1t, dims=1)
+        u2_bar = mean(u2t, dims=1)
+        
+        # Calculate intermediate 1D arrays
+        temp_CBC = (u1_bar .- u2_bar) .* mean(s.ψ1_prime .* v2_prime, dims=1) ./ 2
+        temp_CBT = u1_bar .* d_dy(mean(u1_prime .* v1_prime, dims=1), dy) .+ 
+                   u2_bar .* d_dy(mean(u2_prime .* v2_prime, dims=1), dy)
+        temp_therm = α * F1 .* mean(((s.ψ1_prime .- s.ψ2_prime).^2) ./ 2, dims=1)
+        temp_mech = r .* mean(u2_prime.^2 .+ v2_prime.^2, dims=1)
+        
+        # Avert allocation by taking the mean over the specified index range
+        idx_range = diag.ind_start:diag.ind_end
+        
+        diag.CBC[idx] = mean(temp_CBC[idx_range])
+        diag.CBT[idx] = mean(temp_CBT[idx_range])
+        
+        # Original code subtracts these, so we store them as negative quantities to match
+        diag.therm_damping[idx] = -mean(temp_therm[idx_range])
+        diag.mech_damping[idx] = -mean(temp_mech[idx_range])
+        
+        diag.counter += 1
+    end
 end
 
 
 
 
-function zonal_mean_energy_budget(q1_bar, q2_bar, q1_prime, q2_prime, save_ind_start, save_ind_end)
-
-    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
-    ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
-
-    γ1 = d_dy(reshape(q1_bar, (1, Ny)), dy) .+ beta
-    γ2 = d_dy(reshape(q2_bar, (1, Ny)), dy) .+ beta
-
-    ψ1 = ψ1_bar' .+ ψ1_prime
-    ψ2 = ψ2_bar' .+ ψ2_prime
-
-    u1_prime, v1_prime = u_from_psi(ψ1_prime)
-    u2_prime, v2_prime = u_from_psi(ψ2_prime)
-
-    u1t, v1t = u_from_psi(ψ1)
-    u2t, v2t = u_from_psi(ψ2)
-
-    u1_bar = mean(u1t, dims=1)
-    u2_bar = mean(u2t, dims=1)
-
-    CBC = (u1_bar .- u2_bar) .* mean(ψ1_prime .* v2_prime, dims=1) ./ 2
-
-    CBT = u1_bar .* d_dy(mean(u1_prime .* v1_prime, dims=1), dy) .+ u2_bar .* d_dy(mean(u2_prime .* v2_prime, dims=1), dy)
-
-    therm_damping = - α * F1 .* ((ψ1_bar .- ψ2_bar) ./ 2) 
-
-    mech_damping = -  r .* u2_bar
-
-    return CBC, CBT, therm_damping, mech_damping
+################################################################################
+## Zonal-Mean Flow Hovmoller Diagnostic
+################################################################################
+mutable struct HovmollerZonalFlowDiag <: AbstractDiagnostic
+    frequency::Int
+    counter::Int
+    times::Vector{Float64}
+    
+    # 2D matrices: rows = y (space), columns = time
+    U1::Matrix{Float64}
+    U2::Matrix{Float64}
 end
 
-
-function energy_budget(q1_bar, q2_bar, q1_prime, q2_prime, save_ind_start, save_ind_end, CBC, CBT, therm_damping, mech_damping)
-
-    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
-    ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
-
-    γ1 = d_dy(reshape(q1_bar, (1, Ny)), dy) .+ beta
-    γ2 = d_dy(reshape(q2_bar, (1, Ny)), dy) .+ beta
-
-    ψ1 = ψ1_bar' .+ ψ1_prime
-    ψ2 = ψ2_bar' .+ ψ2_prime
-
-    u1_prime, v1_prime = u_from_psi(ψ1_prime)
-    u2_prime, v2_prime = u_from_psi(ψ2_prime)
-
-    u1t, v1t = u_from_psi(ψ1)
-    u2t, v2t = u_from_psi(ψ2)
-
-    u1_bar = mean(u1t, dims=1)
-    u2_bar = mean(u2t, dims=1)
-
-    temp = (u1_bar .- u2_bar) .* mean(ψ1_prime .* v2_prime, dims=1) ./ 2
-
-    CBC += mean(temp[save_ind_start:save_ind_end])
-
-    temp = u1_bar .* d_dy(mean(u1_prime .* v1_prime, dims=1), dy) .+ u2_bar .* d_dy(mean(u2_prime .* v2_prime, dims=1), dy)
-
-    CBT += mean(temp[save_ind_start:save_ind_end])
-
-    temp = α * F1 .* mean(((ψ1_prime .- ψ2_prime).^ 2) ./ 2, dims=1) 
-
-    therm_damping -= mean(temp[save_ind_start:save_ind_end])
-
-    temp = r .* mean(u2_prime.^2 .+ v2_prime.^2, dims=1)
-
-    mech_damping -= mean(temp[save_ind_start:save_ind_end])
-
-    return CBC, CBT, therm_damping, mech_damping
+function HovmollerZonalFlowDiag(nt::Int, dt::Float64, frequency::Int, Ny::Int)
+    n_diag = ceil(Int, nt / frequency)
+    return HovmollerZonalFlowDiag(
+        frequency, 
+        1, 
+        zeros(n_diag),
+        zeros(Ny, n_diag), 
+        zeros(Ny, n_diag)
+    )
 end
+
+function compute!(diag::HovmollerZonalFlowDiag, model::QGModel, t::Float64, step::Int)
+    if step % diag.frequency == 0
+        idx = diag.counter
+        s = model.state
+        
+        # Save current time
+        diag.times[idx] = t
+        
+        # Calculate total streamfunction (background + perturbation)
+        ψ1 = s.ψ1_bar' .+ s.ψ1_prime
+        ψ2 = s.ψ2_bar' .+ s.ψ2_prime
+        
+        # Extract total zonal velocity (u)
+        u1_total, _ = u_from_psi(ψ1)
+        u2_total, _ = u_from_psi(ψ2)
+        
+        # Compute the zonal mean (averaging along x, keeping y)
+        # vec() converts the 1 x Ny mean matrix into an Ny-element vector
+        diag.U1[:, idx] .= vec(mean(u1_total, dims=1))
+        diag.U2[:, idx] .= vec(mean(u2_total, dims=1))
+        
+        diag.counter += 1
+    end
+end
+
 

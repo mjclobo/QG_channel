@@ -101,27 +101,27 @@ function Lee1997_bg_jet(U0, WC; σ=6.0)
 end
 
 
-function blended_transport_jet(y; T=35.0, W=10.0, σ=6.0, trans=0.0)
+function blended_transport_jet(y; y0=0.0, T=35.0, W=10.0, σ=6.0, trans=0.0, U0=0.0)
 
-    # --- 1. Flat core + ultra-smooth Gaussian shoulders ---
-    function U_flat(yi)
-        r = abs(yi)
+    # --- 1. Flat core + smooth Gaussian shoulders ---
+    function U_flat(yi, y0)
+        r = abs(yi-y0)
         if r <= W
             return 1.0
         else
             ξ = (r - W) / σ
-            return exp(-ξ^4)   # <-- key: quartic Gaussian
+            return exp(-ξ^4)   # quartic Gaussian
         end
     end
 
     # --- 2. Pavan–Held profile (rescaled to comparable width) ---
     σp = W / 1.0   # tunable but keeps widths comparable
-    U_ph(yi) = sech(yi / σp)^2
+    U_ph(yi, y0) = sech((yi-y0) / σp)^2
 
     # --- 3. Geometric blend ---
     Ũ = similar(y)
     for (i, yi) in enumerate(y)
-        Ũ[i] = U_flat(yi)^(1-trans) * U_ph(yi)^trans
+        Ũ[i] = U_flat(yi, y0)^(1-trans) * U_ph(yi, y0)^trans
     end
 
     # --- Hanning taper (only outside |y| > W) ---
@@ -130,7 +130,7 @@ function blended_transport_jet(y; T=35.0, W=10.0, σ=6.0, trans=0.0)
     taper = similar(y)
 
     for (i, yi) in enumerate(y)
-        r = abs(yi)
+        r = abs(yi - y0)
         if r <= W
             taper[i] = 1.0
         else
@@ -148,6 +148,10 @@ function blended_transport_jet(y; T=35.0, W=10.0, σ=6.0, trans=0.0)
     else
         T̃ = sum(Ũ) * dy
         U = T .* Ũ ./ T̃
+    end
+
+    if U0!=0.0
+        U = U0 .* (U ./ maximum(U))
     end
 
     ψ_bg = -cumtrapz(y, U) 
@@ -287,638 +291,187 @@ end
 # Basic time stepping loop
 ################################################################################
 
-
-function run_model(q1, q2, t0, params; timestepper="RK4", output_every=500)
-    start_time = time()
-    # To turn off the PyPlot GUI
-    PyPlot.pygui(false)
-
-    # choose time stepping method; have to use anoNymous function bc "lexical scoping" of Julia...
-    # if timestepper=="RK4"
-    #     println("Using RK4 time stepper")
-    #     ts = q1, q2, dt -> rk4(q1, q2, dt)
-    # elseif timestepper=="RK4_int"
-    #     println("Using RK4 + integrating factor time stepper")
-    #     ts = q1, q2, dt -> rk4_integrating_factor(q1, q2, dt)
-    # else
-    #     error("You're asking for a timestepping method that doesn't exist.")
-    # end
-    # timestep(q1, q2, dt) = ts(q1, q2, dt)
-
-    # calculating y indices for prescribed meridional width of save domain
-    save_ind_start = floor(Int, Ny * y_width / 2)
-    save_ind_end   = floor(Int, Ny * (1 - y_width / 2))
-
-    # defining a couple of counters
-    cnt=1
-    ell=1
-
-    ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
-    u1, v1 = u_from_psi(ψ1)
-    u2, v2 = u_from_psi(ψ2)
+function run_model_decomp(model::QGModel, suite::DiagnosticSuite, out_cfg::OutputConfig, 
+                          ψ_diff_bg, U_bg, t0, params; 
+                          output_every=200, save_ind_start=1, save_ind_end=params.Ny, 
+                          t_start_diag=250, topo_PV=0.0, wind_curl=0.0, q1_STJ_target=0.0, q2_STJ_target=0.0, update_bg=false, fix_zonal_mean=false)
     
-    KE1 = [mean((u1 .- mean(u1, dims=1)).^2 .+ (v1 .- mean(v1, dims=1)).^2)]
-    KE2 = [mean((u2 .- mean(u2, dims=1)).^2 .+ (v2 .- mean(v2, dims=1)).^2)]
+    start_time = time()
+    PyPlot.pygui(false) # Turn off PyPlot GUI
 
-    for n = 1:nt
+    # Unpack grid variables for safety and clarity
+    Nx, Ny = params.Nx, params.Ny
+    dx, dy = params.Lx / Nx, params.Ly / Ny
+    s = model.state
+    o = model.ops
+    dt = params.dt 
 
-        q1, q2 = rk4(q1, q2, dt)
+    # Pre-allocate 2D fields in the outer scope
+    # ψ1_bg_2D = zeros(Nx, Ny)
+    # q1_bg_2D = zeros(Nx, Ny)
 
-        q1[:, 1] .= q1_bg[:, 1]
-        q1[:, end] .= q1_bg[:, end]
-        q2[:, 1] .= q2_bg[:, 1]
-        q2[:, end] .= q2_bg[:, end]
+    if fix_zonal_mean == true
+        # Extract the 1D background slice directly from the matrix passed into the function
+        # This ensures it exactly matches your main execution script
+        ψ1_bg_1D = vec(ψ_diff_bg[1, :])
 
+        # 1. Populate the 1D bar profiles for initialization
+        s.ψ1_bar .= ψ1_bg_1D
+        s.ψ2_bar .= zeros(Ny)
 
-        if mod(n, output_every) == 0      # output a message
-            ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
+        # Compute the corresponding 1D bar PV using 1D operator
+        q1_bg_1D, q2_bg_1D = compute_qg_pv_bar(s.ψ1_bar, s.ψ2_bar; lap_op=o.L1D)
+        s.q1_bar .= q1_bg_1D
+        s.q2_bar .= q2_bg_1D
 
-            if isnan(ψ1[2,2])
-                error("Psi is NaN")
+        # 2. Build the true 2D matrices required for the rhs_full framework
+        ψ1_bg_2D = repeat(ψ1_bg_1D', Nx, 1)
+	q1_bg_2D = repeat(q1_bg_1D', Nx, 1)
+	q2_bg_2D = repeat(q2_bg_1D', Nx, 1)
+
+	# 1. Compute the second derivative of the velocity profiles using your 1D operator
+	# (Assuming L1D acts as d^2/dy^2 on a 1D vector)
+	d2U1_dy2 = model.ops.L1D(U_bg)
+	d2U2_dy2 = zeros(Ny)  # Since U2_bg is zero
+
+	# 2. Correctly use the background velocities (U) for the stretching term!
+	q1_bg_grad_1D = beta .- d2U1_dy2 .+ F1 .* (U_bg .- zeros(Ny))
+	q2_bg_grad_1D = beta .- d2U2_dy2 .+ F2 .* (zeros(Ny) .- U_bg)
+
+	# 3. Repeat to 2D matrices for your rhs_full function
+	q1_bg_grad_2D = repeat(q1_bg_grad_1D', Nx, 1)
+	q2_bg_grad_2D = repeat(q2_bg_grad_1D', Nx, 1)
+    else
+	# dummy variables for plotting routine...should fix this at smoe point!
+        ψ1_bg_2D = nothing
+        q1_bg_2D = nothing
+        q2_bg_2D = nothing
+    end
+
+    cnt = 1
+    ell = 1
+
+    # Initialize empty history arrays in case BCI plotting is turned on
+    KE1_hist = Float64[]
+    KE2_hist = Float64[]
+
+    # Capture initial background PV for the BCI plots
+    q1_bg_init = copy(s.q1_bar)
+    q2_bg_init = copy(s.q2_bar)
+
+    # Main Time Loop
+    for n = 1:params.nt
+        t = t0 + n * dt
+
+        # Potentially update background target field
+        if update_bg
+            ψ1_bg_1D, U_bg, _, _ = ψ_diff_bg_of_t(t)
+            
+            # Update the matrices dynamically for both frameworks
+            ψ1_bg_2D .= repeat(ψ1_bg_1D', Nx, 1)
+            q1_bg_1D, q2_bg_1D = compute_qg_pv_bar(ψ1_bg_1D, zeros(Ny); lap_op=o.L1D)
+            q1_bg_2D .= repeat(q1_bg_1D', Nx, 1)
+	    q2_bg_2D .= repeat(q2_bg_1D', Nx, 1)
+            
+            ψ_diff_bg = copy(ψ1_bg_1D) 
+
+        end
+
+        # --- Time Step Selection ---
+        if fix_zonal_mean == false
+            rk4_coupled(model, ψ_diff_bg, topo_PV, wind_curl, q1_STJ_target, q2_STJ_target, dt)
+        else
+            rk4_fixed_bg(model, ψ1_bg_2D, q1_bg_grad_2D, q2_bg_grad_2D, topo_PV, dt)    # assumes NO WIND FORCING
+        end
+
+        # Diagnostics
+        if t > t_start_diag
+            compute_all!(suite, model, t, n)
+        end
+
+        # Logging
+        if mod(n, output_every) == 0
+            # Ensure streamfunctions are strictly synced with the latest PV
+            s.ψ1_bar, s.ψ2_bar = invert_qg_pv_bar2L(o.solver2L, s.q1_bar, s.q2_bar)
+            s.ψ1_prime, s.ψ2_prime = invert_qg_pv_prime(s.q1_prime, s.q2_prime, o.A_lu, o.rhs_pa, o.ψ_vec)
+
+            # Reconstruct absolute streamfunction for logging diagnostics
+            if fix_zonal_mean == false
+                ψ1 = s.ψ1_bar' .+ s.ψ1_prime 
+                ψ2 = s.ψ2_bar' .+ s.ψ2_prime 
             else
-                u1, v1 = u_from_psi(ψ1)
-                u2, v2 = u_from_psi(ψ2)
-
-                cfl = dt * maximum([maximum([u1; u2]) / dx, maximum([v1; v2]) / dy])
-
-                elapsed_time = time() - start_time
-
-                # modified from GophysicalFlows.jl ex
-                log = @sprintf("step: %04d, t: %.1f, cfl: %.2f, KE1 avg.: %.4e, KE2 avg.: %.4e, ens1: %.4e, ens2: %.4e, walltime: %.2f min",
-                n, t0+n*dt, cfl, mean(u1.^2 .+ v1.^2), mean(u2.^2 .+ v2.^2), sum(L2D(ψ1).^2), sum(L2D(ψ2).^2), elapsed_time/60)
-
-                println(log)
-
+                ψ1 = ψ1_bg_2D .+ s.ψ1_prime
+                ψ2 = s.ψ2_prime
             end
-        end
 
-        if mod(n, save_every) == 0          # save streamfunction fields
-            if save_bool==true # && n >= start_saving*nt
-                ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
-
-                save_streamfunction(save_path, ψ1[:,save_ind_start:save_ind_end], ψ2[:,save_ind_start:save_ind_end], t0+n*dt, params)
-                cnt+=1
-
-            end
-        end
-
-        if mod(n, plot_every) == 0          # plot whatever is in save_basic_anim_panel() function
-            if plot_basic_bool==true
-                ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
-
-                save_basic_anim_panel(fig_path, ell, q1, q2, ψ1, ψ2, U_bg)
-            end
-            if plot_BCI_bool==true
-                save_growth_plot(fig_path, ell, q1, q2, U_bg, n, nt, KE1, KE2)
-            end
-            ell+=1
-        end
-
-    end
-
-    if save_last==true
-        ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy)  # (q1, q2)
-
-        save_streamfunction(save_path, ψ1, ψ2, t0+nt*dt, params)
-    end
-
-    # To turn the PyPlot GUI back on
-    PyPlot.pygui(true)
-end
-
-
-
-
-function run_model_decomp(q1_bar, q2_bar, q1_prime, q2_prime, ψ1_bg, ψ2_bg, ψ_diff_bg, U_bg, t0, params; timestepper="RK4", output_every=500, save_ind_start=1, save_ind_end=Ny, t_start_diag=250)
-    start_time = time()
-    # To turn off the PyPlot GUI
-    PyPlot.pygui(false)
-
-    # calculating y indices for prescribed meridional width of save domain
-    # y_width = 2*WC/Ly  # width of baroclinic zone
-    # save_ind_start = floor(Int, Ny * y_width / 2)
-    # save_ind_end   = floor(Int, Ny * (1 - y_width / 2))
-
-    # defining a couple of counters
-    cnt=1
-    ell=1
-
-    ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
-
-    ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
-    u1_prime, v1_prime = u_from_psi(ψ1_prime)
-    u2_prime, v2_prime = u_from_psi(ψ2_prime)
-    
-    KE1 = [mean((u1_prime .- mean(u1_prime, dims=1)).^2 .+ (v1_prime .- mean(v1_prime, dims=1)).^2)]
-    KE2 = [mean((u2_prime .- mean(u2_prime, dims=1)).^2 .+ (v2_prime .- mean(v2_prime, dims=1)).^2)]
-
-    if diag_bool==true
-        # initialize diag arrays; EKE, EAPE to start
-        n_diag = ceil(Int, nt/diag_every)
-
-        # EKE_diag = zeros(2, n_diag)
-        # EAPE_diag = zeros(n_diag)
-
-        v1ζ1 = zeros(Ny) # , n_diag)
-        v2ζ2 = zeros(Ny) # , n_diag)
-        v1τ = zeros(Ny) # , n_diag)
-        v2τ = zeros(Ny) # , n_diag)
-        q1Jbar = zeros(Ny) # , n_diag)
-        q2Jbar = zeros(Ny) # , n_diag)
-        dy_v_qpsq1 = zeros(Ny)
-        dy_v_qpsq2 = zeros(Ny)
-        q1τ = zeros(Ny) # , n_diag)
-        q2τ = zeros(Ny) # , n_diag)
-        rq2ζ2 = zeros(Ny) # , n_diag)
-        γ1_accum = zeros(Ny)
-        γ2_accum = zeros(Ny)
-        u1_accum = zeros(Ny)
-        u2_accum = zeros(Ny)
-
-        CBC = 0.0
-        CBT = 0.0
-        therm_damping = 0.0
-        mech_damping = 0.0
-
-        diag_cnt = 1
-        diag_cntr = 0
-    end
-
-    if nrg_diag_bool==true
-        # initialize diag arrays; EKE, EAPE to start
-        n_diag = ceil(Int, nt/diag_every)
-
-        EKE_diag = zeros(2, n_diag)
-        EAPE_diag = zeros(n_diag)
-        EAPE_diag2 = zeros(n_diag)
-        zonal_EAPE_diag = zeros(n_diag)
-
-        prod_diag = zeros(2, n_diag)
-
-	zm_diag = zeros(4, Ny, n_diag)
-
-        U_hov_diag = zeros(Ny, n_diag)
-
-        diag_cnt = 1
-    end
-
-    for n = 1:nt
-
-        # potentially update background target field
-        if bg_of_t==true
-            # assumes ψ2_bg is zeros!
-            ψ_diff_bg, U_bg, zone_start_ind, zone_end_ind = ψ_diff_bg_of_t(t0 + n * dt)
-        end
-
-        q1_prime, q2_prime, q1_bar, q2_bar = rk4_coupled(q1_prime, q2_prime, q1_bar, q2_bar, ψ_diff_bg, dt)
-
-        if mod(n, output_every) == 0      # output a message
-
-            ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
-        
-            ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
-
-            ψ1 = ψ1_bar' .+ ψ1_prime # ψ1_prime # 
-            ψ2 = ψ2_bar' .+ ψ2_prime # ψ2_prime # 
-        
             if isnan(ψ1[2,2])
-                error("Psi is NaN")
+                error("Psi is NaN at step $n")
             else
                 u1, v1 = u_from_psi(ψ1)
                 u2, v2 = u_from_psi(ψ2)
 
                 total_nrg = 0.5 * sum(u1.^2 .+ v1.^2) + 0.5 * sum(u2.^2 .+ v2.^2) + sum((0.5 * (ψ1 .- ψ2)).^2)
-
+                
                 cfl = dt * maximum([maximum([u1; u2]) / dx, maximum([v1; v2]) / dy])
-
                 elapsed_time = time() - start_time
 
-                # modified from GophysicalFlows.jl ex
-                log = @sprintf("step: %04d, t: %.1f, cfl: %.2f, KE1 avg.: %.4e, KE2 avg.: %.4e, KE tot.: %.4e, ens1: %.4e, ens2: %.4e, walltime: %.2f min",
-                n, t0+n*dt, cfl, mean(u1.^2 .+ v1.^2), mean(u2.^2 .+ v2.^2), total_nrg, sum(L2D(ψ1).^2), sum(L2D(ψ2).^2), elapsed_time/60)
-
+                log = @sprintf("step: %04d, t: %.1f d, cfl: %.2f, KE1 avg.: %.4e, KE2 avg.: %.4e, KE tot.: %.4e, ens1: %.4e, ens2: %.4e, walltime: %.2f min",
+                               n, t/3600/24, cfl, mean(u1.^2 .+ v1.^2), mean(u2.^2 .+ v2.^2), total_nrg, sum(o.L2D(ψ1).^2), sum(o.L2D(ψ2).^2), elapsed_time/60)
                 println(log)
-
             end
         end
 
-        if mod(n, save_every) == 0          # save streamfunction fields
-            if save_bool==true # && n >= start_saving*nt
-                # ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar)
-                # ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
-                ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
-
-            
-                ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
-            
-                ψ1 = ψ1_bar' .+ ψ1_prime
-                ψ2 = ψ2_bar' .+ ψ2_prime
-
-                save_streamfunction(save_path, ψ1[:,save_ind_start:save_ind_end], ψ2[:,save_ind_start:save_ind_end], t0+n*dt, params)
-                cnt+=1
-
-            end
-        end
-
-        if mod(n, plot_every) == 0          # plot whatever is in save_basic_anim_panel() function
-            if plot_basic_bool==true
-                # ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar, ψ1_bg[1])
-                # ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
-                ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
-
-            
-                ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
-            
-                # save_basic_anim_panel(fig_path, ell, repeat(reshape(q1_bar, 1, Ny), Nx, 1), repeat(reshape(q2_bar, 1, Ny), Nx, 1), repeat(reshape(ψ1_bar, 1, Ny), Nx, 1), repeat(reshape(ψ2_bar, 1, Ny), Nx, 1), U_bg)
-                save_basic_anim_panel(fig_path, ell, q1_bar' .+ q1_prime, q2_bar' .+ q2_prime, ψ1_bar' .+ ψ1_prime, ψ2_bar' .+ ψ2_prime, U_bg, t0 + n*dt)
-
-            end
-            if plot_BCI_bool==true
-                save_growth_plot(fig_path, ell, q1_bar' .+ q1_prime, q2_bar' .+ q2_prime, U_bg, n, nt, KE1, KE2)
-            end
-            ell+=1
-        end
-
-        # diagnostics
-        if mod(n, diag_every) == 0 && nrg_diag_bool == true
-            ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
-            ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
-
-            u1, v1 = u_from_psi(ψ1_prime[:,save_ind_start:save_ind_end])
-            u2, v2 = u_from_psi(ψ2_prime[:,save_ind_start:save_ind_end])
-
-            EKE_diag[1, diag_cnt] = 0.5 * mean(u1.^2 .+ v1.^2)
-            EKE_diag[2, diag_cnt] = 0.5 * mean(u2.^2 .+ v2.^2)
-
-            EAPE_diag[diag_cnt] = mean((0.5 * (ψ1_prime[:,save_ind_start:save_ind_end] .- ψ2_prime[:,save_ind_start:save_ind_end])).^2)   # no Ld^-2 factor bc non-dim (and Ld=1)
-            EAPE_diag2[diag_cnt] = mean(mean(0.5 * (ψ1_prime[:,save_ind_start:save_ind_end] .- ψ2_prime[:,save_ind_start:save_ind_end]), dims=1).^2)
-
-            zonal_EAPE_diag[diag_cnt] = mean((0.5 * (ψ1_bar[save_ind_start:save_ind_end] .- ψ2_bar[save_ind_start:save_ind_end])).^2)
-
-            prod_diag[1, diag_cnt], prod_diag[2, diag_cnt], na1, na2 = energy_budget(q1_bar, q2_bar, q1_prime, q2_prime, save_ind_start, save_ind_end, 0.0, 0.0, 0.0, 0.0)
-
-	    zm_diag[1, :, diag_cnt], zm_diag[2, :, diag_cnt], zm_diag[3, :, diag_cnt], zm_diag[4, :, diag_cnt] = zonal_mean_energy_budget(q1_bar, q2_bar, q1_prime, q2_prime, save_ind_start, save_ind_end)
-
-            U_hov_diag[:, diag_cnt] = mean(u_from_psi(ψ1_bar' .+ ψ1_prime)[1], dims=1)
-
-            # v1ζ1[:, diag_cnt], v2ζ2[:, diag_cnt], v1τ[:, diag_cnt], v2τ[:, diag_cnt], q1Jbar[:, diag_cnt], q2Jbar[:, diag_cnt], q1τ[:, diag_cnt], q2τ[:, diag_cnt], rq2ζ2[:, diag_cnt] = pseudomomentum_budget(q1_bar, q2_bar, q1_prime, q2_prime)
-
-            # @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1[:, diag_cnt], v2ζ2[:, diag_cnt], v1τ[:, diag_cnt], v2τ[:, diag_cnt], q1Jbar[:, diag_cnt], q2Jbar[:, diag_cnt], q1τ[:, diag_cnt], q2τ[:, diag_cnt], rq2ζ2[:, diag_cnt])
-
-            diag_cnt+=1
-
-        end
-
-        if t0 + n * dt > t_start_diag && mod(n, 10)==0 && diag_bool==true
-
-            @views pseudomomentum_budget!(q1_bar, q2_bar, q1_prime, q2_prime, v1ζ1, v2ζ2, v1τ, v2τ, q1Jbar, q2Jbar, dy_v_qpsq1, dy_v_qpsq2, q1τ, q2τ, rq2ζ2, γ1_accum, γ2_accum, u1_accum, u2_accum)
-
-            CBC, CBT, therm_damping, mech_damping = energy_budget(q1_bar, q2_bar, q1_prime, q2_prime, save_ind_start, save_ind_end, CBC, CBT, therm_damping, mech_damping)
-
-            diag_cntr +=1
-        end
-
-    end
-
-    if save_last==true
-        # ψ1_bar = invert_qg_pv_bar(PVBS, q1_bar)
-        # ψ2_bar = invert_qg_pv_bar(PVBS, q2_bar, ψ2_bg[1])
-        ψ1_bar, ψ2_bar = invert_qg_pv_bar2L(solver2L, q1_bar, q2_bar)
-    
-        ψ1_prime, ψ2_prime = invert_qg_pv_prime(q1_prime, q2_prime, A_lu, rhs_pa, ψ_vec)
-    
-        save_streamfunction(save_path, ψ1_bar' .+ ψ1_prime, ψ2_bar' .+ ψ2_prime, t0+nt*dt, params)
-    end
-
-    if diag_bool==true && nrg_diag_bool==true
-        t_diag = t0+nt*dt
-        file_name = struct_to_string(params) * "_diags_t$t_diag.jld"
-        # Save variables to JLD file
-        time_array = collect(range(t0, t0+nt*dt; length=n_diag))
-        # jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => EAPE_diag, "t" => time_array,
-        # "v1ζ1" => v1ζ1, "v2ζ2" => v2ζ2, "v1τ" => v1τ, "v2τ" => v2τ,
-        # "q1Jbar" => q1Jbar, "q2Jbar" => q2Jbar, "q1τ" => q1τ, "q2τ" => q2τ,
-        # "rq2ζ2" => rq2ζ2)
-        jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => Array(EAPE_diag), "EAPE_diag2" => Array(EAPE_diag2),
-        "zm_diag" => zm_diag, "prod_diag" => Array(prod_diag), "U_hov_diag" => Array(U_hov_diag), "zonal_EAPE_diag" => Array(zonal_EAPE_diag), "t" => time_array,
-        "v1ζ1" => v1ζ1./diag_cntr, "v2ζ2" => v2ζ2./diag_cntr, "dy_v_qpsq1" => dy_v_qpsq1 ./diag_cntr,
-        "dy_v_qpsq2" => dy_v_qpsq2 ./diag_cntr, "v1τ" => v1τ./diag_cntr, "v2τ" => v2τ./diag_cntr,
-        "q1Jbar" => q1Jbar./diag_cntr, "q2Jbar" => q2Jbar./diag_cntr, "q1τ" => q1τ./diag_cntr, "q2τ" => q2τ./diag_cntr,
-        "rq2ζ2" => rq2ζ2./diag_cntr, "γ1_accum" => γ1_accum./diag_cntr, "γ2_accum" => γ2_accum./diag_cntr,
-        "u1_accum" => u1_accum./diag_cntr, "u2_accum" => u2_accum./diag_cntr,
-        "CBC" => CBC/diag_cntr, "CBT" => CBT/diag_cntr, "therm_damping" => therm_damping/diag_cntr, "mech_damping" => mech_damping/diag_cntr,
-        "diag_cntr" => diag_cntr)
-
-        jldsave(diag_dir * file_name; jld_data)
-
-        println("Saved all diagnostics to $file_name")
-
-    elseif nrg_diag_bool==true
-        t_diag = t0+nt*dt
-        file_name = struct_to_string(params) * "_nrg_diags_t$t_diag.jld"
-        # Save variables to JLD file
-        time_array = collect(range(t0, t0+nt*dt; length=n_diag))
-
-        jld_data = Dict("EKE_diag" => Array(EKE_diag), "EAPE_diag" => Array(EAPE_diag), "t" => time_array)
-
-        jldsave(diag_dir * file_name; jld_data)
-
-        println("Saved energy diagnostics to $file_name")
-    end
-
-    # To turn the PyPlot GUI back on
-    # PyPlot.pygui(true)
-end
-
-
-
-function run_BT_model(qh, t, params; timestepper="RK4", output_every=500)
-    start_time = time()
-    # To turn off the PyPlot GUI
-    PyPlot.pygui(false)
-
-    # calculating y indices for prescribed meridional width of save domain
-    save_ind_start = floor(Int, Ny * y_width / 2)
-    save_ind_end   = floor(Int, Ny * (1 - y_width / 2))
-
-    # defining a couple of counters
-    cnt=1
-    ell=1
-
-    dqhdt = similar(qh)
-
-    for n = 1:nt
-
-        # rk4_step!(qh,dt,rhs!,ν, r, τ, f0,kx, ky,params)
-
-        t+= dt
-
-        qh = rk4_BT(qh, t, dt)
-
-        if mod(n, output_every) == 0      # output a message
-            ψh = @. -(k2D + Ld^-2).^-1 * qh
-
-            ψ = real.(ifft(ψh))
-
-            if isnan(ψ[2,2])
-                error("Psi is NaN")
+        # Save Streamfunctions
+        if out_cfg.save_bool && mod(n, out_cfg.save_every) == 0
+            if fix_zonal_mean == false
+                ψ1 = s.ψ1_bar' .+ s.ψ1_prime
+                ψ2 = s.ψ2_bar' .+ s.ψ2_prime
             else
-                u, v = u_from_psi_fft(ψh, kx, ky)
-
-                cfl = dt * maximum([maximum(u) / dx, maximum(v) / dy])
-
-                elapsed_time = time() - start_time
-
-                # modified from GophysicalFlows.jl ex
-                log = @sprintf("step: %04d, t: %.1f, cfl: %.2f, KE1 avg.: %.4e, ens1: %.4e, walltime: %.2f min",
-                n, (t0+n*dt)/3600/24, cfl, mean(u.^2 .+ v.^2), sum(real.(ifft(-k2D .* ψh)).^2), elapsed_time/60)
-
-                println(log)
-
+                ψ1 = ψ1_bg_2D .+ s.ψ1_prime
+                ψ2 = s.ψ2_prime
             end
+            save_streamfunction(out_cfg.save_path, ψ1[:, save_ind_start:save_ind_end], ψ2[:, save_ind_start:save_ind_end], t, params)
+            cnt += 1
         end
 
-        # if mod(n, save_every) == 0          # save streamfunction fields
-        #     if save_bool==true # && n >= start_saving*nt
-        #         ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
-
-        #         save_streamfunction(save_path, ψ1[:,save_ind_start:save_ind_end], ψ2[:,save_ind_start:save_ind_end], t0+n*dt, params)
-        #         cnt+=1
-
-        #     end
-        # end
-
-        if mod(n, plot_every) == 0          # plot whatever is in save_basic_anim_panel() function
-            ψh = @. -(k2D + Ld^-2).^-1 * qh
-
-            # ψ_f = wavemaker(ψ0, x, y, x0, y0, δx, δy, t, τ)
-            # q_f = real.(ifft((k2D .+ Ld^-2) .* fft(ψ_f)))        
-
-            save_BT_anim_panel(fig_path, ell, real.(ifft(qh)), real.(ifft(ψh)))
-
-            ell+=1
-        end
-
-    end
-
-    if save_last==true
-        ψh = @. -(k2D + Ld^-2).^-1 * qh
-
-        save_streamfunction(save_path, real.(ifft(ψh)), t0+nt*dt, params)
-    end
-
-    # To turn the PyPlot GUI back on
-    PyPlot.pygui(true)
-end
-
-
-
-function run_BT_model_FD(q, t, params; timestepper="RK4", output_every=500)
-    start_time = time()
-    # To turn off the PyPlot GUI
-    PyPlot.pygui(false)
-
-    # calculating y indices for prescribed meridional width of save domain
-    save_ind_start = floor(Int, Ny * y_width / 2)
-    save_ind_end   = floor(Int, Ny * (1 - y_width / 2))
-
-    # defining a couple of counters
-    cnt=1
-    ell=1
-
-    for n = 1:nt
-
-        t+= dt
-
-        q = rk4_BT_FD(q, t, dt)
-
-        if mod(n, output_every) == 0      # output a message
-            Q = q .- f0
-            Q .-= mean(Q)           # ensure zero mean
-            Q_vec = reshape(Q, Nx*Ny)
-            ψ = reshape(L_re_FD_inv \ Q_vec, Nx, Ny)
-
-            if isnan(ψ[2,2])
-                error("Psi is NaN")
-            else
-                u, v = u_from_psi_fft(fft(ψ), kx, ky)
-
-                cfl = dt * maximum([maximum(u) / dx, maximum(v) / dy])
-
-                elapsed_time = time() - start_time
-
-                # modified from GophysicalFlows.jl ex
-                log = @sprintf("step: %04d, t: %.1f, cfl: %.2f, KE1 avg.: %.4e, ens1: %.4e, walltime: %.2f min",
-                n, (t0+n*dt)/3600/24, cfl, mean(u.^2 .+ v.^2), sum(reshape(L_re_FD * reshape(ψ, Nx*Ny), Nx, Ny).^2), elapsed_time/60)
-
-                println(log)
-
+        # Plotting
+        if mod(n, out_cfg.plot_every) == 0
+	    if out_cfg.plot_basic_bool
+        	save_basic_anim_panel(out_cfg.fig_path, ell, model, U_bg, t, ψ1_bg_2D, q1_bg_2D, q2_bg_2D, fix_zonal_mean)
+    	    end
+            if out_cfg.plot_BCI_bool
+                save_growth_plot(out_cfg.fig_path, ell, model, U_bg, dt, params.nt, KE1_hist, KE2_hist, q1_bg_init, q2_bg_init, ψ_diff_bg)
             end
+            ell += 1
         end
-
-        # if mod(n, save_every) == 0          # save streamfunction fields
-        #     if save_bool==true # && n >= start_saving*nt
-        #         ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
-
-        #         save_streamfunction(save_path, ψ1[:,save_ind_start:save_ind_end], ψ2[:,save_ind_start:save_ind_end], t0+n*dt, params)
-        #         cnt+=1
-
-        #     end
-        # end
-
-        if mod(n, plot_every) == 0          # plot whatever is in save_basic_anim_panel() function
-            Q = q .- f0
-            Q .-= mean(Q)           # ensure zero mean
-            Q_vec = reshape(Q, Nx*Ny)
-            ψ = reshape(L_re_FD_inv \ Q_vec, Nx, Ny)
-
-            # ψ_f = wavemaker(ψ0, x, y, x0, y0, δx, δy, t, τ)
-            # q_f = real.(ifft((k2D .+ Ld^-2) .* fft(ψ_f)))        
-
-            save_BT_anim_panel(fig_path, ell, q, ψ)
-
-            ell+=1
-        end
-
     end
 
-    if save_last==true
-        Q = q .- f0
-        Q .-= mean(Q)           # ensure zero mean
-        Q_vec = reshape(Q, Nx*Ny)
-        ψ = reshape(L_re_FD_inv \ Q_vec, Nx, Ny)
-
-        save_streamfunction(save_path, ψ, t0+nt*dt, params)
+    # Save Final State
+    if out_cfg.save_last
+        s.ψ1_bar, s.ψ2_bar = invert_qg_pv_bar2L(o.solver2L, s.q1_bar, s.q2_bar)
+        s.ψ1_prime, s.ψ2_prime = invert_qg_pv_prime(s.q1_prime, s.q2_prime, o.A_lu, o.rhs_pa, o.ψ_vec)
+        
+        if fix_zonal_mean == false
+            ψ1 = s.ψ1_bar' .+ s.ψ1_prime
+            ψ2 = s.ψ2_bar' .+ s.ψ2_prime
+        else
+            ψ1 = ψ1_bg_2D .+ s.ψ1_prime
+            ψ2 = s.ψ2_prime
+        end
+        save_streamfunction(out_cfg.save_path, ψ1, ψ2, t0 + params.nt * dt, params)
     end
 
-    # To turn the PyPlot GUI back on
-    PyPlot.pygui(true)
+    # Perform Global Diagnostic Dump
+    if out_cfg.diag_bool
+        t_diag = t0 + params.nt * dt
+        file_name = struct_to_string(params) * "_diags_t$t_diag.jld2"
+        save_all(suite, joinpath(out_cfg.diag_dir, file_name))
+    end
 end
 
 
 
-function init_params_BT_FD(Nx, Ny, dx, dy, r, f0, L_re_FD_inv, L_re_FD, Lap_op; backend=CPU())
-    ip = [i == Nx ? 1 : i + 1 for i in 1:Nx]
-    im = [i == 1  ? Nx : i - 1 for i in 1:Nx]
-    jp = [j == Ny ? 1 : j + 1 for j in 1:Ny]
-    jm = [j == 1  ? Ny : j - 1 for j in 1:Ny]
 
-    L_fac = lu(L_re_FD_inv)    # huge speedup
 
-    return BTParamsOpt(
-        Nx, Ny, dx, dy, r, f0,
-        L_fac, L_re_FD, Lap_op,
-        ip, im, jp, jm,
-        backend
-    )
-end
 
-function run_BT_model_FD_KA(q, params; nt=10_000, dt, output_every=500)
 
-    Nx, Ny = params.Nx, params.Ny
-
-    # Preallocate all arrays once
-    Q      = zeros(Nx, Ny)
-    Q_vec  = zeros(Nx*Ny)
-    ψ_v    = zeros(Nx, Ny)
-    ψ_v_vec= zeros(Nx*Ny)
-    ψ_f    = zeros(Nx, Ny)
-    ψ_f_vec= zeros(Nx*Ny)
-    q_f    = zeros(Nx, Ny)
-    dqdt   = zeros(Nx, Ny)
-    ψ_sum = similar(ψ_v)
-    q_sum = similar(q)
-
-    lap_q_vec = zeros(Nx*Ny)
-    lap2_q_vec = zeros(Nx*Ny)
-
-    workspace = (ψ_v, ψ_v_vec, Q, Q_vec, ψ_f, ψ_f_vec, q_f, ψ_sum, q_sum, lap_q_vec, lap2_q_vec)
-
-    # RK4 storage
-    k1 = similar(q)
-    k2 = similar(q)
-    k3 = similar(q)
-    k4 = similar(q)
-    qnew = similar(q)
-
-    t = 0.0
-
-    start_time = time()
-    # To turn off the PyPlot GUI
-    PyPlot.pygui(false)
-
-    # calculating y indices for prescribed meridional width of save domain
-    save_ind_start = floor(Int, Ny * y_width / 2)
-    save_ind_end   = floor(Int, Ny * (1 - y_width / 2))
-
-    # defining a couple of counters
-    cnt=1
-    ell=1
-
-    for n = 1:nt
-
-        rk4_BT_FD!(q, qnew, k1, k2, k3, k4, workspace, params, dt, t)
-        t += dt
-
-        if mod(n, output_every) == 0      # output a message
-            Q = q .- f0
-            Q .-= mean(Q)           # ensure zero mean
-            Q_vec = reshape(Q, Nx*Ny)
-            ψ = reshape(L_re_FD_inv \ Q_vec, Nx, Ny)
-
-            if isnan(ψ[2,2])
-                error("Psi is NaN")
-            else
-                u, v = u_from_psi_fft(fft(ψ), kx, ky)
-
-                cfl = dt * maximum([maximum(u) / dx, maximum(v) / dy])
-
-                elapsed_time = time() - start_time
-
-                # modified from GophysicalFlows.jl ex
-                log = @sprintf("step: %04d, t: %.1f, cfl: %.2f, KE1 avg.: %.4e, ens1: %.4e, walltime: %.2f min",
-                n, (t0+n*dt)/3600/24, cfl, mean(u.^2 .+ v.^2), sum(reshape(L_re_FD * reshape(ψ, Nx*Ny), Nx, Ny).^2), elapsed_time/60)
-
-                println(log)
-
-            end
-        end
-
-        # if mod(n, save_every) == 0          # save streamfunction fields
-        #     if save_bool==true # && n >= start_saving*nt
-        #         ψ1, ψ2 = invert_qg_pv(q1, q2, ψ1_bg, ψ2_bg, inversion_ops, dx, dy) # (q1, q2)
-
-        #         save_streamfunction(save_path, ψ1[:,save_ind_start:save_ind_end], ψ2[:,save_ind_start:save_ind_end], t0+n*dt, params)
-        #         cnt+=1
-
-        #     end
-        # end
-
-        if mod(n, plot_every) == 0          # plot whatever is in save_basic_anim_panel() function
-            Q = q .- f0
-            Q .-= mean(Q)           # ensure zero mean
-            Q_vec = reshape(Q, Nx*Ny)
-            ψ = reshape(L_re_FD_inv \ Q_vec, Nx, Ny)
-
-            # ψ_f = wavemaker(ψ0, x, y, x0, y0, δx, δy, t, τ)
-            # q_f = real.(ifft((k2D .+ Ld^-2) .* fft(ψ_f)))        
-
-            save_BT_anim_panel(fig_path, ell, q, ψ)
-
-            ell+=1
-        end
-
-    end
-
-    if save_last==true
-        Q = q .- f0
-        Q .-= mean(Q)           # ensure zero mean
-        Q_vec = reshape(Q, Nx*Ny)
-        ψ = reshape(L_re_FD_inv \ Q_vec, Nx, Ny)
-
-        save_streamfunction(save_path, ψ, t0+nt*dt, params)
-    end
-
-    # To turn the PyPlot GUI back on
-    PyPlot.pygui(true)
-end
