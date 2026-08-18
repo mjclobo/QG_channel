@@ -38,7 +38,7 @@ F2 = 2 * f0^2 / (gprime * H2)
 # Timestepping
 cfl = 0.1
 dt = cfl * minimum([dx, dy]) / U0
-ndays = 500
+ndays = 100
 nt = round(Int, (ndays * 24 * 3600) / dt)
 
 # Damping
@@ -77,8 +77,13 @@ params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, �
 ################################################################################
 # 2. Background Flow & Topography
 ################################################################################
-# ψ1_bg_1D, U_bg, zone_start_ind, zone_end_ind = Lee1997_bg_jet(U0, WC; σ=50.0e3)
-ψ1_bg_1D, U_bg, zone_start_ind, zone_end_ind = blended_transport_jet(y; σ=50.0e3, W=WC, trans=trans, U0=U0)
+
+## Jet Parameters for the Bickley Jet
+# WC is jet width
+y_U = 0.0      # Central latitude of the maximum baroclinic shear
+
+# Generate the analytical background profiles
+ψ1_bg_1D, U_bg, zone_start_ind, zone_end_ind = bickley_jet(y; U0=U0, L_U=WC, y_U=y_U)
 
 # Expand the 1D profile to an Nx by Ny matrix
 ψ1_bg = repeat(ψ1_bg_1D', Nx, 1) 
@@ -94,7 +99,7 @@ end
 # Topography
 
 h0_topo = 0.0 # 2000.0       # Maximum height of the continental shelf (m)
-W_shelf = 100e3        # Shelfbreak width 
+W_shelf = WC # 100e3        # Shelfbreak width 
 y_shelf = 0.0         # Central latitude of the shelf break
 
 # Tanh profile: shallow on the Antarctic continent (south), deep ocean (north)
@@ -229,15 +234,4 @@ run_model_decomp(
     output_every=250, fix_zonal_mean=fix_zonal_mean
 )
 
-# now you can run L97_WC4_SS.jl to calculate steady-state turbulent statistics
 
-# U_bg_all = zeros(11, Ny)
-
-# fig, ax = plt.subplots(1, 1, figsize=(10,5))
-
-# for (i, t) in enumerate(range(0, 1, 11))
-#     ψ1_bg, U_bg_all[i,:], zone_start_ind, zone_end_ind = blended_transport_jet(y; T=0, W=15, trans=t)
-
-#     ax.plot(y, U_bg_all[i,:])
-
-# end

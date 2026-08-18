@@ -100,6 +100,21 @@ function Lee1997_bg_jet(U0, WC; σ=6.0)
     return ψ_bg, U, upper_jet_bound, lower_jet_bound
 end
 
+function bickley_jet(y_grid; U0=0.2, L_U=100e3, y_U=0.0)
+    # 1. Baroclinic Shear Velocity Profile (sech^2)
+    # Note: sech(x) = 1 / cosh(x)
+    U_bg = @. U0 * (1.0 / cosh((y_grid - y_U) / L_U))^2
+
+    # 2. Streamfunction Profile (tanh)
+    # Since U = -dψ/dy, integrating U_bg yields the exact tanh profile.
+    ψ1_bg = @. -U0 * L_U * tanh((y_grid - y_U) / L_U)
+
+    # 3. Diagnostic bounds
+    zone_start_ind = 1
+    zone_end_ind = length(y_grid)
+
+    return ψ1_bg, U_bg, zone_start_ind, zone_end_ind
+end
 
 function blended_transport_jet(y; y0=0.0, T=35.0, W=10.0, σ=6.0, trans=0.0, U0=0.0)
 
