@@ -101,15 +101,33 @@ function Lee1997_bg_jet(U0, WC; σ=6.0)
 end
 
 function bickley_jet(y_grid; U0=0.2, L_U=100e3, y_U=0.0)
-    # 1. Baroclinic Shear Velocity Profile (sech^2)
-    # Note: sech(x) = 1 / cosh(x)
+    # 1. Analytic Bickley Shear Velocity Profile
     U_bg = @. U0 * (1.0 / cosh((y_grid - y_U) / L_U))^2
 
-    # 2. Streamfunction Profile (tanh)
-    # Since U = -dψ/dy, integrating U_bg yields the exact tanh profile.
-    ψ1_bg = @. -U0 * L_U * tanh((y_grid - y_U) / L_U)
+    # 2. Hanning Taper near the boundaries
+    L_domain = maximum(abs.(y_grid))
+    taper_start = 0.8 * L_domain # Taper the outer 20% of the domain
+    
+    taper = similar(y_grid)
+    for (i, yi) in enumerate(y_grid)
+        r = abs(yi - y_U)
+        if r <= taper_start
+            taper[i] = 1.0
+        else
+            # Map the taper region to [0, 1]
+            ξ = (r - taper_start) / (L_domain - taper_start)
+            taper[i] = 0.5 * (1.0 + cos(pi * ξ))
+        end
+    end
 
-    # 3. Diagnostic bounds
+    # Apply the taper so U goes to exactly 0.0 at the walls
+    U_bg .= U_bg .* taper
+
+    # 3. Streamfunction via numerical integration
+    # This guarantees psi exactly matches the tapered U, and psi[1] == 0.0
+    ψ1_bg = -cumtrapz(y_grid, U_bg)
+    
+    # 4. Diagnostic bounds
     zone_start_ind = 1
     zone_end_ind = length(y_grid)
 

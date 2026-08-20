@@ -424,6 +424,7 @@ end
 #####################################################################
 # RHS Tendencies
 #####################################################################
+#=
 function rhs_prime(model::QGModel, ψ_diff_bg, topo_PV)
     # Unpack for cleaner syntax
     s = model.state
@@ -545,6 +546,88 @@ function rhs_bar(model::QGModel, ψ_diff_bg, topo_PV, wind_curl, q1_STJ_target, 
 
     return dq1dt, dq2dt
 end
+=#
+
+function rhs_prime(model::QGModel, ψ_diff_bg, topo_PV)
+    s = model.state
+    o = model.ops
+
+    # Invert PV
+    s.ψ1_bar, s.ψ2_bar = invert_qg_pv_bar2L(o.solver2L, s.q1_bar, s.q2_bar)
+    s.ψ1_prime, s.ψ2_prime = invert_qg_pv_prime(s.q1_prime, s.q2_prime, o.A_lu, o.rhs_pa, o.ψ_vec)
+
+    # Full Advection
+    arakawa_jacobian!(o.J1_buffer, s.ψ1_bar' .+ s.ψ1_prime, s.q1_bar' .+ s.q1_prime, dx, dy)
+    arakawa_jacobian!(o.J2_buffer, s.ψ2_bar' .+ s.ψ2_prime, s.q2_bar' .+ s.q2_prime .+ topo_PV, dx, dy)
+
+    # Subtract zonal mean using the buffers
+    # (The interior of J_buffer is safe; the garbage at boundaries is overwritten below)
+    dq1dt = -(o.J1_buffer .- mean(o.J1_buffer, dims=1)) .- beta .* u_from_psi(s.ψ1_prime)[2]
+    dq2dt = -(o.J2_buffer .- mean(o.J2_buffer, dims=1)) .- beta .* u_from_psi(s.ψ2_prime)[2]
+
+    # Damping
+    dq1dt .-= ν .* hyperviscous(s.ψ1_prime; L=o.L2D)
+    dq2dt .-= ν .* hyperviscous(s.ψ2_prime; L=o.L2D)
+    dq2dt .-= r .* o.L2D(s.ψ2_prime)
+
+    # Thermal relaxation
+    ψ_diff_bg_prime = ψ_diff_bg .- mean(ψ_diff_bg, dims=1)
+    dq1dt .+=  α * F1 .* ((s.ψ1_prime .- s.ψ2_prime) ./ 2 .- ψ_diff_bg_prime ./ 2)
+    dq2dt .+= -α * F2 .* ((s.ψ1_prime .- s.ψ2_prime) ./ 2 .- ψ_diff_bg_prime ./ 2)
+
+    # STJ relaxation
+    dq1dt .-= α_STJ_1D' .* s.q1_prime
+    dq2dt .-= α_STJ_1D' .* s.q2_prime
+
+    # ENFORCE NEUMANN BOUNDARIES VIA TENDENCIES (dq/dt |_wall = dq/dt |_interior)
+    dq1dt[:, 1] .= dq1dt[:, 2]; dq1dt[:, end] .= dq1dt[:, end-1]
+    dq2dt[:, 1] .= dq2dt[:, 2]; dq2dt[:, end] .= dq2dt[:, end-1]
+
+    return dq1dt, dq2dt
+end
+
+function rhs_bar(model::QGModel, ψ_diff_bg, topo_PV, wind_curl, q1_STJ_target, q2_STJ_target)
+    s = model.state
+    o = model.ops
+
+    # Invert PV
+    s.ψ1_bar, s.ψ2_bar = invert_qg_pv_bar2L(o.solver2L, s.q1_bar, s.q2_bar)
+    s.ψ1_prime, s.ψ2_prime = invert_qg_pv_prime(s.q1_prime, s.q2_prime, o.A_lu, o.rhs_pa, o.ψ_vec)
+
+    # Nonlinear advection
+    arakawa_jacobian!(o.J1_buffer, s.ψ1_prime, s.q1_prime, dx, dy)
+    arakawa_jacobian!(o.J2_buffer, s.ψ2_prime, s.q2_prime .+ topo_PV, dx, dy)
+
+    # Calculate the zonal mean and scrub memory garbage at the walls
+    J1_eddy_mean = mean(o.J1_buffer, dims=1)'
+    J2_eddy_mean = mean(o.J2_buffer, dims=1)'
+    J1_eddy_mean[1] = 0.0; J1_eddy_mean[end] = 0.0
+    J2_eddy_mean[1] = 0.0; J2_eddy_mean[end] = 0.0
+
+    dq1dt = -J1_eddy_mean
+    dq2dt = -J2_eddy_mean
+
+    # Add 1D Damping
+    dq1dt .-= ν .* hyperviscous(s.ψ1_bar; L=o.L1D)
+    dq2dt .-= ν .* hyperviscous(s.ψ2_bar; L=o.L1D)
+    dq2dt .-= r .* o.L1D(s.ψ2_bar)
+
+    # Thermal relaxation
+    ψ_diff_bg_bar = vec(mean(ψ_diff_bg, dims=1))
+    dq1dt .+=  α * F1 .* ((s.ψ1_bar .- s.ψ2_bar) ./ 2 .- ψ_diff_bg_bar ./ 2)
+    dq2dt .+= -α * F2 .* ((s.ψ1_bar .- s.ψ2_bar) ./ 2 .- ψ_diff_bg_bar ./ 2)
+
+    # Surface Wind Forcing & STJ momentum forcing
+    dq1dt .+= wind_curl
+    dq1dt .-= α_STJ_1D .* (s.q1_bar .- q1_STJ_target)
+    dq2dt .-= α_STJ_1D .* (s.q2_bar .- q2_STJ_target)
+
+    # Let the tendencies at the walls naturally evolve!
+    # Removing dq1dt[1] = 0.0 prevents the infinite PV spike.
+
+    return dq1dt, dq2dt
+end
+
 
 ###################################################################
 # For a fixed background flow (that still allows the zonal mean state to evolve)

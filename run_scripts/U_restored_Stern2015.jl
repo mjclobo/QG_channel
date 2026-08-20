@@ -38,7 +38,7 @@ F2 = 2 * f0^2 / (gprime * H2)
 # Timestepping
 cfl = 0.1
 dt = cfl * minimum([dx, dy]) / U0
-ndays = 1
+ndays = 250
 nt = round(Int, (ndays * 24 * 3600) / dt)
 
 # Damping
@@ -48,7 +48,7 @@ r = 1.0 / (10.0 * 24 * 3600)      # Oceanic bottom friction
 α = 1.0 / (10.0 * 24 * 3600)      # Thermal relaxation
 
 # Toggle to fix the background flow (True = fixed U as U_bg, False = evolving jet)
-fix_zonal_mean = true
+fix_zonal_mean = false
 
 if fix_zonal_mean == true
     # Global α override for the fixed background framework to prevent perturbation damping
@@ -83,7 +83,8 @@ params = ModelParams(Nx, Ny, nt, Lx, Ly, dt, beta, f0, g, [H1, H2], ρ0, Δρ, �
 y_U = 0.0      # Central latitude of the maximum baroclinic shear
 
 # Generate the analytical background profiles
-ψ1_bg_1D, U_bg, zone_start_ind, zone_end_ind = bickley_jet(y; U0=U0, L_U=WC, y_U=y_U)
+#ψ1_bg_1D, U_bg, zone_start_ind, zone_end_ind = bickley_jet(y; U0=U0, L_U=WC, y_U=y_U)
+ψ1_bg_1D, U_bg, zone_start_ind, zone_end_ind = blended_transport_jet(y; σ=50.0e3, W=WC, trans=1.0, U0=U0)
 
 # Expand the 1D profile to an Nx by Ny matrix
 ψ1_bg = repeat(ψ1_bg_1D', Nx, 1) 
@@ -161,7 +162,7 @@ U_STJ_target = [0.0]
 ################################################################################
 # 3. Output & Diagnostic Configuration
 ################################################################################
-base_name = "fixU$(fix_zonal_mean)_beta$(beta)_WC$(WC)_trans$(trans)_r$(r)_h0topo$(h0_topo)_Wshelf$(W_shelf)_U0$(U0)_tau0$(τ0)_alpha$(α)"
+base_name = "restoreU$(fix_zonal_mean)_beta$(beta)_WC$(WC)_trans$(trans)_r$(r)_h0topo$(h0_topo)_Wshelf$(W_shelf)_U0$(U0)_tau0$(τ0)_alpha$(α)"
 base_dir = "/home/matt/Desktop/research/QG/2LQG/HeldLobo_proj/QG_channel_output"
 
 # Define frequencies as standalone variables first
@@ -218,9 +219,9 @@ model = QGModel(state, ops)
 ################################################################################
 suite = DiagnosticSuite()
 # add!(suite, :Pseudomomentum, PseudomomentumDiag(nt, dt, diag_every, Ny))
-#add!(suite, :ZonalMeanEnergy, ZonalMeanEnergyDiag(nt, dt, diag_every, Ny))
+add!(suite, :ZonalMeanEnergy, ZonalMeanEnergyDiag(nt, dt, diag_every, Ny))
 # add!(suite, :ScalarEnergy, ScalarEnergyDiag(nt, dt, diag_every, zone_start_ind, zone_end_ind))
-#add!(suite, :HovmollerZonalFlow, HovmollerZonalFlowDiag(nt, dt, diag_every, Ny))
+add!(suite, :HovmollerZonalFlow, HovmollerZonalFlowDiag(nt, dt, diag_every, Ny))
 
 ################################################################################
 # 6. Run Model Configuration
@@ -228,10 +229,12 @@ suite = DiagnosticSuite()
 t0 = 0.0
 
 # Run the unified simulation framework
+
 run_model_decomp(
     model, suite, out_cfg, ψ_diff_bg, U_bg, t0, params; 
     topo_PV=topo_PV, wind_curl=wind_curl, t_start_diag=0, 
     output_every=250, fix_zonal_mean=fix_zonal_mean
 )
 
+include("./plot_Hov.jl")
 
